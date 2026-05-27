@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { INITIAL_PLANTS } from "../constants/plants";
+import { INITIAL_PLANTS, SAMPLE_PLANTS } from "../constants/plants";
 import { formatEur, formatDate } from "../utils/format";
 import CalendrierView from "./CalendrierView";
 import GlobalView from "./GlobalView";
@@ -34,14 +34,28 @@ export default function PotagerTracker() {
   const [plants, setPlants] = useState(() => {
     try {
       const saved = localStorage.getItem("potager_plants");
-      return saved ? JSON.parse(saved) : INITIAL_PLANTS;
+      if (saved) return JSON.parse(saved);
+      localStorage.setItem("recolta_has_samples", "true");
+      return SAMPLE_PLANTS;
     } catch { return INITIAL_PLANTS; }
+  });
+
+  const [hasSamples, setHasSamples] = useState(() => {
+    try { return localStorage.getItem("recolta_has_samples") === "true"; }
+    catch { return false; }
   });
 
   useEffect(() => {
     try { localStorage.setItem("potager_plants", JSON.stringify(plants)); }
     catch {}
   }, [plants]);
+
+  useEffect(() => {
+    try {
+      if (hasSamples) localStorage.setItem("recolta_has_samples", "true");
+      else localStorage.removeItem("recolta_has_samples");
+    } catch {}
+  }, [hasSamples]);
 
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), quantite: "", note: "" });
@@ -214,6 +228,13 @@ export default function PotagerTracker() {
       dateAchat: editPlant.dateAchat || p.dateAchat,
     } : p));
     setEditPlant(null);
+  }
+
+  function effacerExemples() {
+    setPlants([]);
+    setHasSamples(false);
+    setSelected(null);
+    setSaisonActive(new Date().getFullYear());
   }
 
   function telechargerModele() {
@@ -414,6 +435,32 @@ export default function PotagerTracker() {
         ) : !selected ? (
           /* ── VUE LISTE ── */
           <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+
+            {/* Bannière de bienvenue */}
+            {hasSamples && (
+              <div style={{
+                background: "linear-gradient(135deg, #f4f9e8 0%, #e8f0d0 100%)",
+                border: `1px solid ${C.greenBorder}`,
+                borderRadius: 14, padding: "18px", marginBottom: 16,
+              }}>
+                <div style={{ fontSize: 28, marginBottom: 8 }}>🌱</div>
+                <div className="lora" style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 6 }}>
+                  Bienvenue dans Récolta !
+                </div>
+                <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.7, marginBottom: 14 }}>
+                  Ces plants sont des <strong style={{ color: C.text }}>exemples</strong> pour te montrer comment fonctionne l&apos;app — récoltes, calcul d&apos;économies, graphique cumulatif.
+                  Quand tu es prêt·e, efface-les et saisis tes propres plants.
+                </div>
+                <button onClick={effacerExemples} style={{
+                  width: "100%", background: C.redBg,
+                  border: `1px solid ${C.redBorder}`,
+                  color: C.red, borderRadius: 10, padding: "10px",
+                  fontSize: 13, fontWeight: 700, cursor: "pointer",
+                }}>
+                  🗑 Effacer les exemples et partir de zéro
+                </button>
+              </div>
+            )}
 
             {chartData.length > 0 && (
               <div style={{
