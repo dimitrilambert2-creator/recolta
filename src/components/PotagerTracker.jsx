@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { INITIAL_PLANTS, SAMPLE_PLANTS } from "../constants/plants";
 import { formatEur, formatDate } from "../utils/format";
 import CalendrierView from "./CalendrierView";
+import EmojiPicker from "./EmojiPicker";
 import GlobalView from "./GlobalView";
 import ChartRecoltes from "./ChartRecoltes";
 
@@ -668,8 +669,7 @@ export default function PotagerTracker() {
                   <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
                     <div style={{ width: 60 }}>
                       <div style={labelStyle}>Emoji</div>
-                      <input type="text" value={newPlant.emoji} onChange={e => setNewPlant(n => ({ ...n, emoji: e.target.value }))}
-                        style={{ ...inputStyle, fontSize: 20, textAlign: "center", padding: "6px" }} />
+                      <EmojiPicker value={newPlant.emoji} onChange={e => setNewPlant(n => ({ ...n, emoji: e }))} C={C} />
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={labelStyle}>Nom *</div>
@@ -750,8 +750,7 @@ export default function PotagerTracker() {
                       <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
                         <div style={{ width: 60 }}>
                           <div style={labelStyle}>Emoji</div>
-                          <input type="text" value={editPlant.emoji} onChange={e => setEditPlant(ep => ({ ...ep, emoji: e.target.value }))}
-                            style={{ ...inputStyle, fontSize: 20, textAlign: "center", padding: "6px" }} />
+                          <EmojiPicker value={editPlant.emoji} onChange={e => setEditPlant(ep => ({ ...ep, emoji: e }))} C={C} />
                         </div>
                         <div style={{ flex: 1 }}>
                           <div style={labelStyle}>Nom</div>
