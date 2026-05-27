@@ -1,15 +1,1 @@
-export const INITIAL_PLANTS = [
-  { id: 1, dateAchat: "2026-05-22", emoji: "🍒", nom: "Tomate cerise", quantite: 3, prixPot: 2.45, coutTotal: 7.35, unite: "kg", prixMarche: 7.00, couleur: "#c03020", recoltes: [] },
-  { id: 11, dateAchat: "2026-05-22", emoji: "🍅", nom: "Tomate ronde", quantite: 3, prixPot: 2.45, coutTotal: 7.35, unite: "kg", prixMarche: 4.50, couleur: "#e05c3a", recoltes: [] },
-  { id: 12, dateAchat: "2026-05-22", emoji: "🍅", nom: "Tomate allongée", quantite: 1, prixPot: 2.45, coutTotal: 2.45, unite: "kg", prixMarche: 4.50, couleur: "#d04030", recoltes: [] },
-  { id: 13, dateAchat: "2026-05-22", emoji: "🫀", nom: "Tomate cœur de bœuf", quantite: 3, prixPot: 2.45, coutTotal: 7.35, unite: "kg", prixMarche: 7.50, couleur: "#a02828", recoltes: [] },
-  { id: 2, dateAchat: "2026-05-22", emoji: "🫑", nom: "Poivron violet", quantite: 1, prixPot: 2.80, coutTotal: 2.80, unite: "unite", prixMarche: 5.00, couleur: "#7c4d8a", recoltes: [] },
-  { id: 3, dateAchat: "2026-05-22", emoji: "🫑", nom: "Poivron orange", quantite: 1, prixPot: 2.80, coutTotal: 2.80, unite: "unite", prixMarche: 5.00, couleur: "#e07a2a", recoltes: [] },
-  { id: 4, dateAchat: "2026-05-22", emoji: "🍆", nom: "Aubergine", quantite: 1, prixPot: 2.80, coutTotal: 2.80, unite: "kg", prixMarche: 4.50, couleur: "#4a2060", recoltes: [] },
-  { id: 5, dateAchat: "2026-05-22", emoji: "🎃", nom: "Courge spaghetti", quantite: 1, prixPot: 2.80, coutTotal: 2.80, unite: "unite", prixMarche: 3.50, couleur: "#c8a020", recoltes: [] },
-  { id: 6, dateAchat: "2026-05-22", emoji: "🥒", nom: "Courgette", quantite: 4, prixPot: 1.50, coutTotal: 6.00, unite: "kg", prixMarche: 3.50, couleur: "#4a8c3a", recoltes: [] },
-  { id: 7, dateAchat: "2026-05-22", emoji: "🥬", nom: "Poireau", quantite: 1, prixPot: 5.65, coutTotal: 5.65, unite: "kg", prixMarche: 4.00, couleur: "#2d6040", recoltes: [] },
-  { id: 8, dateAchat: "2026-05-22", emoji: "🌿", nom: "Persil", quantite: 1, prixPot: 2.80, coutTotal: 2.80, unite: "botte", prixMarche: 1.75, couleur: "#3a7020", recoltes: [] },
-  { id: 9, dateAchat: "2026-05-22", emoji: "🥒", nom: "Concombre", quantite: 1, prixPot: 8.95, coutTotal: 8.95, unite: "kg", prixMarche: 2.50, couleur: "#3a7840", recoltes: [] },
-  { id: 10, dateAchat: "2026-05-22", emoji: "🥔", nom: "Pomme de terre Charlotte", quantite: 2, prixPot: 9.90, coutTotal: 19.80, unite: "kg", prixMarche: 3.50, couleur: "#b8902a", recoltes: [] },
-];
+export const INITIAL_PLANTS = [];
