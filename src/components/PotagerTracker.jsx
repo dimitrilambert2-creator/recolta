@@ -370,7 +370,7 @@ export default function PotagerTracker() {
           {/* Sélecteur de saison */}
           <div style={{ display: "flex", gap: 6, marginTop: 12, alignItems: "center" }}>
             {saisons.map(s => (
-              <button key={s} onClick={() => { setSaisonActive(s); setSelected(null); }}
+              <button key={s} onClick={() => { setSaisonActive(s); setSelected(null); setView("dashboard"); }}
                 style={{
                   padding: "5px 14px", borderRadius: 20,
                   background: saisonActive === s && view === "dashboard" ? C.text : C.bg,
