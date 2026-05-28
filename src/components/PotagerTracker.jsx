@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { INITIAL_PLANCHES, SAMPLE_PLANCHES } from "../constants/plants";
 import { formatEur, formatDate } from "../utils/format";
+import { CALENDRIER_DEFAULT } from "../constants/calendrier";
+import { getFamille } from "../constants/families";
 import CalendrierView from "./CalendrierView";
 import EmojiPicker from "./EmojiPicker";
 import GlobalView from "./GlobalView";
@@ -138,6 +140,61 @@ export default function PotagerTracker() {
       return { date, val: parseFloat(val.toFixed(2)), cumul: parseFloat(cumul.toFixed(2)) };
     });
   })();
+
+  // ── Alertes dashboard ────────────────────────────────────────────
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  const alertesRotation = (() => {
+    const alerts = [];
+    planches.forEach(planche => {
+      const actuels  = planche.plants.filter(p => getSaison(p) === saisonActive);
+      const precedents = planche.plants.filter(p => getSaison(p) === saisonActive - 1);
+      actuels.forEach(plant => {
+        const famille = getFamille(plant.nom);
+        if (!famille) return;
+        const conflit = precedents.find(p => getFamille(p.nom) === famille);
+        if (conflit) alerts.push({ plancheNom: planche.nom, plancheId: planche.id, plant: plant.nom, famille, plantPrecedent: conflit.nom });
+      });
+    });
+    return alerts;
+  })();
+
+  const alertesEntretien = (() => {
+    const now = new Date();
+    return planches
+      .filter(pl => pl.statut === "active" || pl.statut === "preparation")
+      .map(planche => {
+        const passeEs = planche.entretiens.filter(e => e.date <= today).sort((a, b) => b.date.localeCompare(a.date));
+        if (passeEs.length === 0) return { plancheNom: planche.nom, plancheId: planche.id, jours: null };
+        const jours = Math.floor((now - new Date(passeEs[0].date + "T12:00:00")) / 86400000);
+        return jours > 30 ? { plancheNom: planche.nom, plancheId: planche.id, jours } : null;
+      })
+      .filter(Boolean);
+  })();
+
+  const moisActuel = new Date().getMonth() + 1;
+  const rappelsCalendrier = (() => {
+    const parAction = { "À semer (intérieur)": [], "À repiquer": [], "À planter": [] };
+    CALENDRIER_DEFAULT.forEach(esp => {
+      esp.periodes.forEach(p => {
+        if (p.type === "recolte") return;
+        const actif = p.debut <= p.fin
+          ? moisActuel >= p.debut && moisActuel <= p.fin
+          : moisActuel >= p.debut || moisActuel <= p.fin;
+        if (!actif) return;
+        if (p.type === "semis_int" && !parAction["À semer (intérieur)"].includes(esp.espece))
+          parAction["À semer (intérieur)"].push(esp.espece);
+        if (p.type === "repiquage" && !parAction["À repiquer"].includes(esp.espece))
+          parAction["À repiquer"].push(esp.espece);
+        if (p.type === "pleine_terre" && !parAction["À planter"].includes(esp.espece))
+          parAction["À planter"].push(esp.espece);
+      });
+    });
+    return Object.entries(parAction).filter(([, v]) => v.length > 0);
+  })();
+
+  const hasAlertes = alertesRotation.length > 0 || alertesEntretien.length > 0 || rappelsCalendrier.length > 0;
 
   const inputStyle = {
     width: "100%", background: "#fff9ee",
@@ -771,6 +828,83 @@ export default function PotagerTracker() {
                   📈 Récoltes cumulées {saisonActive}
                 </div>
                 <ChartRecoltes data={chartData} totalInvesti={totalInvesti} />
+              </div>
+            )}
+
+            {/* Alertes & rappels */}
+            {hasAlertes && (
+              <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px", marginBottom: 14 }}>
+                <div className="lora" style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 12 }}>
+                  🔔 Alertes &amp; rappels
+                </div>
+
+                {/* Calendrier */}
+                {rappelsCalendrier.length > 0 && (
+                  <div style={{ marginBottom: alertesRotation.length > 0 || alertesEntretien.length > 0 ? 12 : 0 }}>
+                    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>🌱</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: C.green, marginBottom: 4 }}>
+                          En ce moment dans le jardin
+                        </div>
+                        {rappelsCalendrier.map(([action, especes]) => (
+                          <div key={action} style={{ fontSize: 11, color: C.textMuted, marginBottom: 2 }}>
+                            <span style={{ fontWeight: 600, color: C.text }}>{action} :</span>{" "}
+                            {especes.join(", ")}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Rotation */}
+                {alertesRotation.length > 0 && (
+                  <div style={{ marginBottom: alertesEntretien.length > 0 ? 12 : 0 }}>
+                    {rappelsCalendrier.length > 0 && <div style={{ borderTop: `1px dashed ${C.borderDash}`, margin: "10px 0" }} />}
+                    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⚠️</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: C.amber, marginBottom: 4 }}>
+                          Rotation à surveiller
+                        </div>
+                        {alertesRotation.map((a, i) => (
+                          <div key={i} style={{ fontSize: 11, color: C.textMuted, marginBottom: 2 }}>
+                            <span style={{ fontWeight: 600, color: C.text, cursor: "pointer", textDecoration: "underline dotted" }}
+                              onClick={() => setSelectedPlancheId(a.plancheId)}>
+                              {a.plancheNom}
+                            </span>
+                            {" — "}{a.plant} ({a.famille}) · même famille que {a.plantPrecedent} l&apos;an dernier
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Entretien */}
+                {alertesEntretien.length > 0 && (
+                  <div>
+                    {(rappelsCalendrier.length > 0 || alertesRotation.length > 0) && <div style={{ borderTop: `1px dashed ${C.borderDash}`, margin: "10px 0" }} />}
+                    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>🧴</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, marginBottom: 4 }}>
+                          Entretien recommandé
+                        </div>
+                        {alertesEntretien.map((a, i) => (
+                          <div key={i} style={{ fontSize: 11, color: C.textMuted, marginBottom: 2 }}>
+                            <span style={{ fontWeight: 600, color: C.text, cursor: "pointer", textDecoration: "underline dotted" }}
+                              onClick={() => setSelectedPlancheId(a.plancheId)}>
+                              {a.plancheNom}
+                            </span>
+                            {" — "}{a.jours === null ? "aucun entretien enregistré" : `dernier entretien il y a ${a.jours} jours`}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
