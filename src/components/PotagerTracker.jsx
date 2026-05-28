@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { INITIAL_PLANCHES, SAMPLE_PLANCHES, INITIAL_ACHATS, SAMPLE_ACHATS } from "../constants/plants";
+import { INITIAL_PLANCHES, SAMPLE_PLANCHES, INITIAL_ACHATS, SAMPLE_ACHATS, INITIAL_CARNET, SAMPLE_CARNET } from "../constants/plants";
 import { formatEur, formatDate } from "../utils/format";
 import { CALENDRIER_DEFAULT } from "../constants/calendrier";
 import { getFamille } from "../constants/families";
@@ -9,6 +9,7 @@ import GlobalView from "./GlobalView";
 import ChartRecoltes from "./ChartRecoltes";
 import PlancheDetail from "./PlancheDetail";
 import AchatsView from "./AchatsView";
+import CarnetView from "./CarnetView";
 
 const COULEURS = ["#e05c3a","#c03020","#e07a2a","#c8a020","#7ecb50","#4a8c3a","#2d6040","#3a7840","#4a2060","#7c4d8a","#a02828","#3a6080"];
 
@@ -98,6 +99,19 @@ export default function PotagerTracker() {
     try { localStorage.setItem("potager_achats", JSON.stringify(achats)); }
     catch {}
   }, [achats]);
+
+  const [carnet, setCarnet] = useState(() => {
+    try {
+      const saved = localStorage.getItem("potager_carnet");
+      if (saved) return JSON.parse(saved);
+      return localStorage.getItem("recolta_has_samples") === "true" ? SAMPLE_CARNET : INITIAL_CARNET;
+    } catch { return INITIAL_CARNET; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem("potager_carnet", JSON.stringify(carnet)); }
+    catch {}
+  }, [carnet]);
 
   const [selected, setSelected] = useState(null);
   const [selectedPlancheId, setSelectedPlancheId] = useState(null);
@@ -353,6 +367,7 @@ export default function PotagerTracker() {
   function effacerExemples() {
     setPlanches([]);
     setAchats([]);
+    setCarnet([]);
     setHasSamples(false);
     setSelected(null);
     setSelectedPlancheId(null);
@@ -523,6 +538,16 @@ export default function PotagerTracker() {
               }}>
               🛒 Achats
             </button>
+            <button onClick={() => { setView(view === "carnet" ? "dashboard" : "carnet"); setSelected(null); setSelectedPlancheId(null); }}
+              style={{
+                padding: "5px 14px", borderRadius: 20,
+                background: view === "carnet" ? C.text : C.bg,
+                border: `1px solid ${C.border}`,
+                color: view === "carnet" ? "#fff9ee" : C.textMuted,
+                fontSize: 12, fontWeight: 600, cursor: "pointer",
+              }}>
+              📓 Carnet
+            </button>
           </div>
 
           {/* Stats globales */}
@@ -551,6 +576,14 @@ export default function PotagerTracker() {
 
         ) : view === "calendrier" ? (
           <CalendrierView plants={allPlants} C={C} />
+
+        ) : view === "carnet" ? (
+          <CarnetView
+            carnet={carnet}
+            saisonActive={saisonActive}
+            C={C}
+            onUpdateCarnet={setCarnet}
+          />
 
         ) : view === "achats" ? (
           <AchatsView

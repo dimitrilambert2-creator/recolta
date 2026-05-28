@@ -1,5 +1,16 @@
 export const INITIAL_PLANCHES = [];
 export const INITIAL_ACHATS = [];
+export const INITIAL_CARNET = [];
+
+export const SAMPLE_CARNET = [
+  {
+    saison: 2026,
+    meteo: "Printemps précoce et doux. Été chaud, quelques jours de canicule début août.",
+    eau: "~180L estimés sur la saison, arrosage tous les 2 jours en juillet-août.",
+    achatsNotables: "Serre tunnel 3×2m achetée d'occasion, tuyaux goutte-à-goutte.",
+    notes: "Première vraie saison potager organisée. Les courgettes ont explosé ! Prévoir moins de plants l'an prochain. À essayer : haricots grimpants sur le mur nord.",
+  },
+];
 
 export const SAMPLE_ACHATS = [
   { id: 10001, date: "2026-04-28", categorie: "terreau",  description: "Terreau plantation 50L (exemple)", montant: 8.90 },
