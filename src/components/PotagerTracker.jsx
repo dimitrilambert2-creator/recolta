@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { INITIAL_PLANTS, SAMPLE_PLANTS } from "../constants/plants";
+import { INITIAL_PLANCHES, SAMPLE_PLANCHES } from "../constants/plants";
 import { formatEur, formatDate } from "../utils/format";
 import CalendrierView from "./CalendrierView";
 import EmojiPicker from "./EmojiPicker";
 import GlobalView from "./GlobalView";
 import ChartRecoltes from "./ChartRecoltes";
+import PlancheDetail from "./PlancheDetail";
 
 const COULEURS = ["#e05c3a","#c03020","#e07a2a","#c8a020","#7ecb50","#4a8c3a","#2d6040","#3a7840","#4a2060","#7c4d8a","#a02828","#3a6080"];
 
@@ -25,20 +26,44 @@ const C = {
   amber: "#806020",
 };
 
+const STATUTS = {
+  active:      { label: "Active",         icon: "🟢" },
+  repos:       { label: "En repos",       icon: "😴" },
+  preparation: { label: "En préparation", icon: "🌱" },
+  hivernage:   { label: "Hivernage",      icon: "❄️" },
+};
+
 const CSV_MODELE = `date_achat;nom;emoji;quantite_plants;cout_pot;prix_marche;unite;recolte_date;recolte_quantite
-2025-05-01;Tomate cerise;🍒;3;2.45;6.50;kg;2025-09-01;6.0
-2025-05-01;Courgette;🥒;4;1.50;3.50;kg;;
-2025-05-01;Haricot vert;🫘;1;0;9.00;kg;2025-08-01;11.154
-2025-05-01;Fraise;🍓;1;0;15.00;kg;2025-07-01;0.708`;
+2026-05-01;Tomate cerise;🍒;3;2.45;6.50;kg;2026-09-01;6.0
+2026-05-01;Courgette;🥒;4;1.50;3.50;kg;;
+2026-05-01;Haricot vert;🫘;1;0;9.00;kg;2026-08-01;1.2`;
 
 export default function PotagerTracker() {
-  const [plants, setPlants] = useState(() => {
+  const [planches, setPlanches] = useState(() => {
     try {
-      const saved = localStorage.getItem("potager_plants");
-      if (saved) return JSON.parse(saved);
+      const savedPlanches = localStorage.getItem("potager_planches");
+      if (savedPlanches) return JSON.parse(savedPlanches);
+
+      // Migration depuis l'ancien format à plat
+      const savedPlants = localStorage.getItem("potager_plants");
+      if (savedPlants) {
+        const oldPlants = JSON.parse(savedPlants);
+        if (oldPlants.length > 0) {
+          return [{
+            id: Date.now(),
+            nom: "Mon potager",
+            surface: 0,
+            statut: "active",
+            couleur: "#4a8c3a",
+            plants: oldPlants,
+            entretiens: [],
+          }];
+        }
+      }
+
       localStorage.setItem("recolta_has_samples", "true");
-      return SAMPLE_PLANTS;
-    } catch { return INITIAL_PLANTS; }
+      return SAMPLE_PLANCHES;
+    } catch { return INITIAL_PLANCHES; }
   });
 
   const [hasSamples, setHasSamples] = useState(() => {
@@ -47,9 +72,9 @@ export default function PotagerTracker() {
   });
 
   useEffect(() => {
-    try { localStorage.setItem("potager_plants", JSON.stringify(plants)); }
+    try { localStorage.setItem("potager_planches", JSON.stringify(planches)); }
     catch {}
-  }, [plants]);
+  }, [planches]);
 
   useEffect(() => {
     try {
@@ -59,32 +84,41 @@ export default function PotagerTracker() {
   }, [hasSamples]);
 
   const [selected, setSelected] = useState(null);
+  const [selectedPlancheId, setSelectedPlancheId] = useState(null);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), quantite: "", note: "" });
   const [editPrix, setEditPrix] = useState(null);
   const [editRecolte, setEditRecolte] = useState(null);
-  const [showAddPlant, setShowAddPlant] = useState(false);
-  const [newPlant, setNewPlant] = useState({ nom: "", emoji: "🌱", quantite: "1", prixPot: "", prixMarche: "", unite: "kg", couleur: "#4a8c3a", dateAchat: new Date().toISOString().slice(0, 10) });
   const [editPlant, setEditPlant] = useState(null);
   const [view, setView] = useState("dashboard");
   const [saisonActive, setSaisonActive] = useState(new Date().getFullYear());
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [csvError, setCsvError] = useState("");
   const [csvPreview, setCsvPreview] = useState([]);
-  const [swipeId, setSwipeId] = useState(null);
   const [deleted, setDeleted] = useState(null);
-  const swipeStartX = useRef(null);
 
-  const getSaison = p => p.dateAchat ? new Date(p.dateAchat).getFullYear() : (p.saison || 2026);
-  const saisons = [...new Set(plants.map(getSaison))].sort((a, b) => b - a);
-  const plantsSaison = plants.filter(p => getSaison(p) === saisonActive);
+  // Planche add/edit
+  const [showAddPlanche, setShowAddPlanche] = useState(false);
+  const [newPlanche, setNewPlanche] = useState({ nom: "", surface: "", statut: "active", couleur: "#4a8c3a" });
 
-  const totalInvesti = plantsSaison.reduce((s, p) => s + p.coutTotal, 0);
-  const totalValeur = plantsSaison.reduce((acc, p) =>
+  // ── Données dérivées ─────────────────────────────────────────────
+  const allPlants = planches.flatMap(pl => pl.plants);
+  const getSaison = p => p.dateAchat ? new Date(p.dateAchat).getFullYear() : (p.saison || new Date().getFullYear());
+  const saisons = [...new Set(allPlants.map(getSaison))].sort((a, b) => b - a);
+  const allPlantsSaison = allPlants.filter(p => getSaison(p) === saisonActive);
+
+  const totalInvesti = allPlantsSaison.reduce((s, p) => s + p.coutTotal, 0);
+  const totalValeur = allPlantsSaison.reduce((acc, p) =>
     acc + p.recoltes.reduce((s, r) => s + r.quantite * p.prixMarche, 0), 0);
   const economie = totalValeur - totalInvesti;
 
+  const selectedPlanche = selectedPlancheId ? planches.find(pl => pl.id === selectedPlancheId) : null;
+  const plantPlanche = selected ? planches.find(pl => pl.plants.some(p => p.id === selected)) : null;
+  const plant = plantPlanche?.plants.find(p => p.id === selected) ?? null;
+  const plantValeur = plant ? plant.recoltes.reduce((s, r) => s + r.quantite * plant.prixMarche, 0) : 0;
+  const plantEco = plant ? plantValeur - plant.coutTotal : 0;
+
   const chartData = (() => {
-    const allRecoltes = plantsSaison.flatMap(p =>
+    const allRecoltes = allPlantsSaison.flatMap(p =>
       p.recoltes.map(r => ({ date: r.date, valeur: r.quantite * p.prixMarche }))
     );
     if (allRecoltes.length === 0) return [];
@@ -105,118 +139,67 @@ export default function PotagerTracker() {
     });
   })();
 
-
-  const plant = selected ? plants.find(p => p.id === selected) : null;
-  const plantValeur = plant ? plant.recoltes.reduce((s, r) => s + r.quantite * plant.prixMarche, 0) : 0;
-  const plantEco = plant ? plantValeur - plant.coutTotal : 0;
-
   const inputStyle = {
     width: "100%", background: "#fff9ee",
     border: `1px solid ${C.border}`, color: C.text,
     borderRadius: 8, padding: "8px 10px",
     fontSize: 13, boxSizing: "border-box",
-    fontFamily: "'Nunito', sans-serif",
-    outline: "none",
+    fontFamily: "'Nunito', sans-serif", outline: "none",
   };
   const labelStyle = { fontSize: 10, color: C.textMuted, marginBottom: 4, textTransform: "uppercase", letterSpacing: 1.5 };
 
-  // ── Actions ──────────────────────────────────────────────────────
+  // ── Helpers planche ──────────────────────────────────────────────
+
+  function updatePlantInPlanche(plancheId, plantId, updater) {
+    setPlanches(prev => prev.map(pl =>
+      pl.id === plancheId
+        ? { ...pl, plants: pl.plants.map(p => p.id === plantId ? updater(p) : p) }
+        : pl
+    ));
+  }
+
+  // ── Actions récoltes ─────────────────────────────────────────────
 
   function addRecolte(plantId) {
     const q = parseFloat(form.quantite);
-    if (!q || q <= 0) return;
-    setPlants(prev => prev.map(p =>
-      p.id === plantId
-        ? { ...p, recoltes: [...p.recoltes, { id: Date.now(), date: form.date, quantite: q, note: form.note }] }
-        : p
-    ));
+    if (!q || q <= 0 || !plantPlanche) return;
+    updatePlantInPlanche(plantPlanche.id, plantId, p => ({
+      ...p, recoltes: [...p.recoltes, { id: Date.now(), date: form.date, quantite: q, note: form.note }],
+    }));
     setForm({ date: new Date().toISOString().slice(0, 10), quantite: "", note: "" });
   }
 
   function deleteRecolte(plantId, recolteId) {
-    setPlants(prev => prev.map(p =>
-      p.id === plantId ? { ...p, recoltes: p.recoltes.filter(r => r.id !== recolteId) } : p
-    ));
+    if (!plantPlanche) return;
+    updatePlantInPlanche(plantPlanche.id, plantId, p => ({
+      ...p, recoltes: p.recoltes.filter(r => r.id !== recolteId),
+    }));
   }
 
   function saveEditRecolte(plantId) {
     const q = parseFloat(editRecolte.quantite);
-    if (!q || q <= 0) return;
-    setPlants(prev => prev.map(p =>
-      p.id === plantId
-        ? { ...p, recoltes: p.recoltes.map(r => r.id === editRecolte.id ? { ...r, date: editRecolte.date, quantite: q, note: editRecolte.note } : r) }
-        : p
-    ));
+    if (!q || q <= 0 || !plantPlanche) return;
+    updatePlantInPlanche(plantPlanche.id, plantId, p => ({
+      ...p, recoltes: p.recoltes.map(r =>
+        r.id === editRecolte.id ? { ...r, date: editRecolte.date, quantite: q, note: editRecolte.note } : r
+      ),
+    }));
     setEditRecolte(null);
   }
 
   function updatePrix(plantId, newPrix) {
     const val = parseFloat(newPrix);
-    if (!val || val <= 0) return;
-    setPlants(prev => prev.map(p => p.id === plantId ? { ...p, prixMarche: val } : p));
+    if (!val || val <= 0 || !plantPlanche) return;
+    updatePlantInPlanche(plantPlanche.id, plantId, p => ({ ...p, prixMarche: val }));
     setEditPrix(null);
-  }
-
-  function addPlant() {
-    const qte = parseInt(newPlant.quantite) || 1;
-    const prixPot = parseFloat(newPlant.prixPot) || 0;
-    const prixMarche = parseFloat(newPlant.prixMarche);
-    if (!newPlant.nom.trim() || !prixMarche) return;
-    setPlants(prev => [...prev, {
-      id: Date.now(),
-      emoji: newPlant.emoji,
-      nom: newPlant.nom.trim(),
-      quantite: qte,
-      prixPot,
-      coutTotal: prixPot * qte,
-      unite: newPlant.unite,
-      prixMarche,
-      couleur: newPlant.couleur,
-      dateAchat: newPlant.dateAchat || new Date().toISOString().slice(0, 10),
-      recoltes: [],
-      custom: true,
-    }]);
-    setNewPlant({ nom: "", emoji: "🌱", quantite: "1", prixPot: "", prixMarche: "", unite: "kg", couleur: "#4a8c3a", dateAchat: new Date().toISOString().slice(0, 10) });
-    setShowAddPlant(false);
-  }
-
-  function deletePlant(plantId) {
-    const plant = plants.find(p => p.id === plantId);
-    setPlants(prev => prev.filter(p => p.id !== plantId));
-    setSelected(null);
-    setSwipeId(null);
-    if (deleted?.timeout) clearTimeout(deleted.timeout);
-    const timeout = setTimeout(() => setDeleted(null), 5000);
-    setDeleted({ plant, timeout });
-  }
-
-  function annulerSuppression() {
-    if (!deleted) return;
-    clearTimeout(deleted.timeout);
-    setPlants(prev => [...prev, deleted.plant]);
-    setDeleted(null);
-  }
-
-  function reconduirePlant(plant) {
-    const anneeSuivante = getSaison(plant) + 1;
-    const dejaExistant = plants.find(p => p.nom === plant.nom && getSaison(p) === anneeSuivante);
-    if (dejaExistant) {
-      alert(`Une version de "${plant.nom}" existe déjà pour ${anneeSuivante}.`);
-      return;
-    }
-    const newId = Date.now();
-    const dateAchat = `${anneeSuivante}-${(plant.dateAchat || "2026-05-01").slice(5)}`;
-    setPlants(prev => [...prev, { ...plant, id: newId, dateAchat, recoltes: [], custom: true }]);
-    setSaisonActive(anneeSuivante);
-    setSelected(newId);
   }
 
   function saveEditPlant(plantId) {
     const qte = parseInt(editPlant.quantite) || 1;
     const prixPot = parseFloat(editPlant.prixPot) || 0;
     const prixMarche = parseFloat(editPlant.prixMarche);
-    if (!editPlant.nom.trim() || !prixMarche) return;
-    setPlants(prev => prev.map(p => p.id === plantId ? {
+    if (!editPlant.nom.trim() || !prixMarche || !plantPlanche) return;
+    updatePlantInPlanche(plantPlanche.id, plantId, p => ({
       ...p,
       nom: editPlant.nom.trim(),
       emoji: editPlant.emoji,
@@ -227,40 +210,98 @@ export default function PotagerTracker() {
       unite: editPlant.unite,
       couleur: editPlant.couleur,
       dateAchat: editPlant.dateAchat || p.dateAchat,
-    } : p));
+    }));
     setEditPlant(null);
   }
 
+  function deletePlant(plantId, plancheId) {
+    const pl = planches.find(p => p.id === plancheId);
+    const p = pl?.plants.find(p => p.id === plantId);
+    if (!p) return;
+    setPlanches(prev => prev.map(pl =>
+      pl.id === plancheId ? { ...pl, plants: pl.plants.filter(p => p.id !== plantId) } : pl
+    ));
+    setSelected(null);
+    if (deleted?.timeout) clearTimeout(deleted.timeout);
+    const timeout = setTimeout(() => setDeleted(null), 5000);
+    setDeleted({ plant: p, plancheId, timeout });
+  }
+
+  function annulerSuppression() {
+    if (!deleted) return;
+    clearTimeout(deleted.timeout);
+    setPlanches(prev => prev.map(pl =>
+      pl.id === deleted.plancheId ? { ...pl, plants: [...pl.plants, deleted.plant] } : pl
+    ));
+    setDeleted(null);
+  }
+
+  function reconduirePlant(p) {
+    if (!plantPlanche) return;
+    const anneeSuivante = getSaison(p) + 1;
+    const dejaExistant = allPlants.find(ap => ap.nom === p.nom && getSaison(ap) === anneeSuivante);
+    if (dejaExistant) {
+      alert(`"${p.nom}" existe déjà pour ${anneeSuivante}.`);
+      return;
+    }
+    const newId = Date.now();
+    const dateAchat = `${anneeSuivante}-${(p.dateAchat || "2026-05-01").slice(5)}`;
+    const newP = { ...p, id: newId, dateAchat, recoltes: [], custom: true };
+    setPlanches(prev => prev.map(pl =>
+      pl.id === plantPlanche.id ? { ...pl, plants: [...pl.plants, newP] } : pl
+    ));
+    setSaisonActive(anneeSuivante);
+    setSelected(newId);
+  }
+
+  // ── Actions planches ─────────────────────────────────────────────
+
+  function addPlanche() {
+    if (!newPlanche.nom.trim()) return;
+    setPlanches(prev => [...prev, {
+      id: Date.now(),
+      nom: newPlanche.nom.trim(),
+      surface: parseFloat(newPlanche.surface) || 0,
+      statut: newPlanche.statut,
+      couleur: newPlanche.couleur,
+      plants: [],
+      entretiens: [],
+    }]);
+    setNewPlanche({ nom: "", surface: "", statut: "active", couleur: "#4a8c3a" });
+    setShowAddPlanche(false);
+  }
+
+  function handleUpdatePlanche(updatedPlanche) {
+    setPlanches(prev => prev.map(pl => pl.id === updatedPlanche.id ? updatedPlanche : pl));
+  }
+
   function effacerExemples() {
-    setPlants([]);
+    setPlanches([]);
     setHasSamples(false);
     setSelected(null);
+    setSelectedPlancheId(null);
     setSaisonActive(new Date().getFullYear());
   }
+
+  // ── CSV ──────────────────────────────────────────────────────────
 
   function telechargerModele() {
     const blob = new Blob([CSV_MODELE], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = "recolta_modele.csv";
-    a.click();
+    a.href = url; a.download = "recolta_modele.csv"; a.click();
     URL.revokeObjectURL(url);
   }
 
   function parseCsv(text) {
     const lines = text.trim().split("\n").map(l => l.trim()).filter(Boolean);
-    if (lines.length < 2) return { error: "Le fichier est vide ou ne contient qu'une entête.", plants: [] };
+    if (lines.length < 2) return { error: "Fichier vide.", plants: [] };
     const header = lines[0].split(";").map(h => h.trim().toLowerCase());
     const required = ["date_achat","nom","prix_marche","unite"];
     const missing = required.filter(r => !header.includes(r));
     if (missing.length > 0) return { error: `Colonnes manquantes : ${missing.join(", ")}`, plants: [] };
 
-    const get = (row, key) => {
-      const idx = header.indexOf(key);
-      return idx >= 0 ? (row[idx] || "").trim() : "";
-    };
-
+    const get = (row, key) => { const idx = header.indexOf(key); return idx >= 0 ? (row[idx] || "").trim() : ""; };
     const plantsMap = {};
     const errors = [];
 
@@ -290,10 +331,7 @@ export default function PotagerTracker() {
         };
       }
       if (recolteDate && !isNaN(recolteQte) && recolteQte > 0) {
-        plantsMap[key].recoltes.push({
-          id: Date.now() + Math.random(),
-          date: recolteDate, quantite: recolteQte, note: "Import CSV",
-        });
+        plantsMap[key].recoltes.push({ id: Date.now() + Math.random(), date: recolteDate, quantite: recolteQte, note: "Import CSV" });
       }
     });
 
@@ -313,24 +351,20 @@ export default function PotagerTracker() {
   }
 
   function confirmerImportCsv() {
-    const idsExistants = new Set(plants.map(p => p.nom + "__" + p.dateAchat));
-    const aAjouter = csvPreview.filter(p => !idsExistants.has(p.nom + "__" + p.dateAchat));
-    setPlants(prev => [...prev, ...aAjouter]);
-    if (aAjouter.length > 0) setSaisonActive(new Date(aAjouter[0].dateAchat).getFullYear());
+    const existants = new Set(allPlants.map(p => p.nom + "__" + p.dateAchat));
+    const aAjouter = csvPreview.filter(p => !existants.has(p.nom + "__" + p.dateAchat));
+    if (aAjouter.length > 0) {
+      setPlanches(prev => {
+        if (prev.length === 0) {
+          return [{ id: Date.now(), nom: "Mon potager", surface: 0, statut: "active", couleur: "#4a8c3a", plants: aAjouter, entretiens: [] }];
+        }
+        return prev.map((pl, idx) => idx === 0 ? { ...pl, plants: [...pl.plants, ...aAjouter] } : pl);
+      });
+      setSaisonActive(new Date(aAjouter[0].dateAchat).getFullYear());
+    }
     setShowCsvImport(false);
     setCsvPreview([]);
     setCsvError("");
-  }
-
-  function handleTouchStart(e, id) {
-    swipeStartX.current = e.touches[0].clientX;
-  }
-  function handleTouchEnd(e, id) {
-    if (swipeStartX.current === null) return;
-    const dx = e.changedTouches[0].clientX - swipeStartX.current;
-    if (dx < -60) setSwipeId(id);
-    else if (dx > 20) setSwipeId(null);
-    swipeStartX.current = null;
   }
 
   // ── Render ────────────────────────────────────────────────────────
@@ -357,21 +391,19 @@ export default function PotagerTracker() {
         position: "sticky", top: 0, zIndex: 10,
       }}>
         <div style={{ maxWidth: 640, margin: "0 auto" }}>
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-            <div>
-              <div style={{ fontSize: 10, color: C.textMuted, letterSpacing: 3, textTransform: "uppercase" }}>
-                Journal · Saison {saisonActive}
-              </div>
-              <div className="lora" style={{ fontSize: 24, color: C.text, fontWeight: 700, marginTop: 2 }}>
-                🌿 Mon Potager
-              </div>
+          <div>
+            <div style={{ fontSize: 10, color: C.textMuted, letterSpacing: 3, textTransform: "uppercase" }}>
+              Journal · Saison {saisonActive}
+            </div>
+            <div className="lora" style={{ fontSize: 24, color: C.text, fontWeight: 700, marginTop: 2 }}>
+              🌿 Mon Potager
             </div>
           </div>
 
           {/* Sélecteur de saison */}
           <div style={{ display: "flex", gap: 6, marginTop: 12, alignItems: "center" }}>
             {saisons.map(s => (
-              <button key={s} onClick={() => { setSaisonActive(s); setSelected(null); setView("dashboard"); }}
+              <button key={s} onClick={() => { setSaisonActive(s); setSelected(null); setSelectedPlancheId(null); setView("dashboard"); }}
                 style={{
                   padding: "5px 14px", borderRadius: 20,
                   background: saisonActive === s && view === "dashboard" ? C.text : C.bg,
@@ -382,8 +414,7 @@ export default function PotagerTracker() {
                 {s}
               </button>
             ))}
-            <button
-              onClick={() => { setView(view === "global" ? "dashboard" : "global"); setSelected(null); }}
+            <button onClick={() => { setView(view === "global" ? "dashboard" : "global"); setSelected(null); setSelectedPlancheId(null); }}
               style={{
                 marginLeft: "auto", padding: "5px 14px", borderRadius: 20,
                 background: view === "global" ? C.text : C.bg,
@@ -393,8 +424,7 @@ export default function PotagerTracker() {
               }}>
               📊 Global
             </button>
-            <button
-              onClick={() => { setView(view === "calendrier" ? "dashboard" : "calendrier"); setSelected(null); }}
+            <button onClick={() => { setView(view === "calendrier" ? "dashboard" : "calendrier"); setSelected(null); setSelectedPlancheId(null); }}
               style={{
                 padding: "5px 14px", borderRadius: 20,
                 background: view === "calendrier" ? C.text : C.bg,
@@ -406,7 +436,7 @@ export default function PotagerTracker() {
             </button>
           </div>
 
-          {/* Stats */}
+          {/* Stats globales */}
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             {[
               { l: "Investi", v: formatEur(totalInvesti), c: C.red },
@@ -428,15 +458,286 @@ export default function PotagerTracker() {
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "16px" }}>
 
         {view === "global" ? (
-          <GlobalView plants={plants} saisons={saisons} C={C} />
+          <GlobalView plants={allPlants} saisons={saisons} C={C} />
 
         ) : view === "calendrier" ? (
-          <CalendrierView plants={plants} C={C} />
+          <CalendrierView plants={allPlants} C={C} />
 
-        ) : !selected ? (
-          /* ── VUE LISTE ── */
-          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+        ) : selected && plant ? (
+          /* ── VUE DÉTAIL PLANT ── */
+          <div>
+            <button onClick={() => { setSelected(null); setEditPlant(null); }}
+              style={{ background: "none", border: "none", color: C.textMuted, cursor: "pointer", fontSize: 13, padding: "0 0 16px 0" }}>
+              ← Retour
+            </button>
 
+            <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px", marginBottom: 14 }}>
+              {editPlant ? (
+                <div>
+                  <div className="lora" style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 14 }}>✎ Modifier le plant</div>
+                  <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+                    <div style={{ width: 60 }}>
+                      <div style={labelStyle}>Emoji</div>
+                      <EmojiPicker value={editPlant.emoji} onChange={e => setEditPlant(ep => ({ ...ep, emoji: e }))} C={C} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={labelStyle}>Nom</div>
+                      <input autoFocus type="text" value={editPlant.nom}
+                        onChange={e => setEditPlant(ep => ({ ...ep, nom: e.target.value }))} style={inputStyle} />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={labelStyle}>Date d&apos;achat</div>
+                      <input type="date" value={editPlant.dateAchat}
+                        onChange={e => setEditPlant(ep => ({ ...ep, dateAchat: e.target.value }))} style={inputStyle} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={labelStyle}>Nb de plants</div>
+                      <input type="number" min="1" value={editPlant.quantite}
+                        onChange={e => setEditPlant(ep => ({ ...ep, quantite: e.target.value }))} style={inputStyle} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={labelStyle}>Coût (€)</div>
+                      <input type="number" min="0" step="0.1" value={editPlant.prixPot}
+                        onChange={e => setEditPlant(ep => ({ ...ep, prixPot: e.target.value }))} style={inputStyle} />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={labelStyle}>Unité</div>
+                      <select value={editPlant.unite}
+                        onChange={e => setEditPlant(ep => ({ ...ep, unite: e.target.value }))} style={inputStyle}>
+                        <option value="kg">kg</option>
+                        <option value="unite">à l&apos;unité</option>
+                        <option value="botte">botte</option>
+                        <option value="litre">litre</option>
+                      </select>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={labelStyle}>Prix marché bio (€)</div>
+                      <input type="number" min="0" step="0.1" value={editPlant.prixMarche}
+                        onChange={e => setEditPlant(ep => ({ ...ep, prixMarche: e.target.value }))} style={inputStyle} />
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={labelStyle}>Couleur</div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                      {COULEURS.map(c => (
+                        <div key={c} onClick={() => setEditPlant(ep => ({ ...ep, couleur: c }))}
+                          style={{ width: 28, height: 28, borderRadius: 6, background: c, cursor: "pointer",
+                            border: editPlant.couleur === c ? "2px solid #3a2e10" : "2px solid transparent" }} />
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => saveEditPlant(plant.id)} style={{
+                      flex: 2, background: C.greenBg, border: `1px solid ${C.greenBorder}`,
+                      color: C.green, borderRadius: 10, padding: "10px",
+                      fontSize: 13, fontWeight: 700, cursor: "pointer",
+                    }}>✓ Enregistrer</button>
+                    <button onClick={() => setEditPlant(null)} style={{
+                      flex: 1, background: C.redBg, border: `1px solid ${C.redBorder}`,
+                      color: C.red, borderRadius: 10, padding: "10px",
+                      fontSize: 13, cursor: "pointer",
+                    }}>Annuler</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 14 }}>
+                    <div style={{ fontSize: 38, lineHeight: 1 }}>{plant.emoji}</div>
+                    <div style={{ flex: 1 }}>
+                      <div className="lora" style={{ fontSize: 20, fontWeight: 700, color: C.text }}>{plant.nom}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+                        {plant.quantite} plant{plant.quantite > 1 ? "s" : ""}
+                        {plant.dateAchat ? ` · Acheté le ${new Date(plant.dateAchat).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}` : ""}
+                        {plant.prixPot > 0 ? ` · ${formatEur(plant.prixPot)}/pot` : ""}
+                        {plantPlanche && <span style={{ color: C.green }}> · {plantPlanche.nom}</span>}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <button onClick={() => setEditPlant({ nom: plant.nom, emoji: plant.emoji, quantite: String(plant.quantite), prixPot: String(plant.prixPot), prixMarche: String(plant.prixMarche), unite: plant.unite, couleur: plant.couleur, dateAchat: plant.dateAchat || new Date().toISOString().slice(0, 10) })}
+                        style={{ background: "none", border: "none", color: C.textMuted, fontSize: 12, cursor: "pointer", padding: 0 }}>
+                        ✎ Modifier
+                      </button>
+                      <div>
+                        <button onClick={() => reconduirePlant(plant)}
+                          style={{ background: "none", border: "none", color: C.green, fontSize: 12, cursor: "pointer", padding: 0, marginTop: 4 }}>
+                          🌱 Reconduire {getSaison(plant) + 1}
+                        </button>
+                      </div>
+                      <div>
+                        <button onClick={() => deletePlant(plant.id, plantPlanche?.id)}
+                          style={{ background: "none", border: "none", color: C.red, fontSize: 12, cursor: "pointer", padding: 0, marginTop: 4 }}>
+                          🗑 Supprimer
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+                    {[
+                      { l: "Investi", v: formatEur(plant.coutTotal), c: C.red },
+                      { l: "Valeur récoltée", v: formatEur(plantValeur), c: C.green },
+                      { l: "Économie", v: (plantEco >= 0 ? "+" : "") + formatEur(plantEco), c: plantEco >= 0 ? C.green : C.red },
+                      {
+                        l: plant.unite === "kg" ? "Kg récoltés" : plant.unite === "botte" ? "Bottes" : plant.unite === "litre" ? "Litres" : "Unités",
+                        v: plant.recoltes.reduce((s, r) => s + r.quantite, 0).toFixed(plant.unite === "kg" ? 1 : 0) + (plant.unite === "kg" ? " kg" : plant.unite === "botte" ? " bot." : plant.unite === "litre" ? " L" : " u."),
+                        c: C.amber,
+                      },
+                    ].map(s => (
+                      <div key={s.l} style={{ flex: 1, background: C.bg, borderRadius: 8, padding: "8px", border: `1px solid ${C.border}` }}>
+                        <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1.5 }}>{s.l}</div>
+                        <div className="lora" style={{ fontSize: 13, fontWeight: 600, color: s.c, marginTop: 2 }}>{s.v}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 11, color: C.textMuted }}>Prix marché bio :</span>
+                    {editPrix === plant.id ? (
+                      <input autoFocus type="number" step="0.1" defaultValue={plant.prixMarche}
+                        onBlur={e => updatePrix(plant.id, e.target.value)}
+                        onKeyDown={e => e.key === "Enter" && updatePrix(plant.id, e.target.value)}
+                        style={{ ...inputStyle, width: 80 }} />
+                    ) : (
+                      <button onClick={() => setEditPrix(plant.id)} style={{
+                        background: C.bg, border: `1px solid ${C.border}`,
+                        color: C.amber, borderRadius: 6, padding: "3px 10px",
+                        fontSize: 12, cursor: "pointer",
+                      }}>
+                        {formatEur(plant.prixMarche)}/{plant.unite === "kg" ? "kg" : plant.unite === "botte" ? "botte" : plant.unite === "litre" ? "litre" : "unité"} ✎
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Ajouter récolte */}
+            <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px", marginBottom: 14 }}>
+              <div className="lora" style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 12 }}>+ Ajouter une récolte</div>
+              <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={labelStyle}>Date</div>
+                  <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={labelStyle}>Quantité ({plant.unite === "kg" ? "kg" : plant.unite === "botte" ? "bottes" : "unités"})</div>
+                  <input type="number" step={plant.unite === "kg" ? "0.1" : "1"} min="0" value={form.quantite}
+                    onChange={e => setForm(f => ({ ...f, quantite: e.target.value }))}
+                    placeholder={plant.unite === "kg" ? "0.0" : "0"} style={inputStyle} />
+                </div>
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <div style={labelStyle}>Note (optionnel)</div>
+                <input type="text" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
+                  placeholder="ex: belle récolte, 1ère tomate..." style={inputStyle} />
+              </div>
+              <button onClick={() => addRecolte(plant.id)} style={{
+                width: "100%", background: C.greenBg, border: `1px solid ${C.greenBorder}`,
+                color: C.green, borderRadius: 8, padding: "10px",
+                fontSize: 13, fontWeight: 700, cursor: "pointer",
+              }}>Enregistrer la récolte</button>
+            </div>
+
+            {/* Historique */}
+            {plant.recoltes.length > 0 ? (
+              <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px" }}>
+                <div className="lora" style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 12 }}>Historique</div>
+                {[...plant.recoltes].reverse().map(r => (
+                  <div key={r.id} style={{ borderBottom: `1px dashed ${C.borderDash}`, paddingBottom: 10, marginBottom: 10 }}>
+                    {editRecolte && editRecolte.id === r.id ? (
+                      <div>
+                        <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={labelStyle}>Date</div>
+                            <input type="date" value={editRecolte.date}
+                              onChange={e => setEditRecolte(er => ({ ...er, date: e.target.value }))} style={inputStyle} />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={labelStyle}>Quantité</div>
+                            <input autoFocus type="number" step={plant.unite === "kg" ? "0.1" : "1"} min="0"
+                              value={editRecolte.quantite}
+                              onChange={e => setEditRecolte(er => ({ ...er, quantite: e.target.value }))} style={inputStyle} />
+                          </div>
+                        </div>
+                        <input type="text" value={editRecolte.note}
+                          onChange={e => setEditRecolte(er => ({ ...er, note: e.target.value }))}
+                          placeholder="Note..." style={{ ...inputStyle, marginBottom: 8 }} />
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={() => saveEditRecolte(plant.id)} style={{
+                            flex: 1, background: C.greenBg, border: `1px solid ${C.greenBorder}`,
+                            color: C.green, borderRadius: 8, padding: "7px",
+                            fontSize: 12, fontWeight: 700, cursor: "pointer",
+                          }}>✓ Enregistrer</button>
+                          <button onClick={() => setEditRecolte(null)} style={{
+                            flex: 1, background: C.redBg, border: `1px solid ${C.redBorder}`,
+                            color: C.red, borderRadius: 8, padding: "7px",
+                            fontSize: 12, cursor: "pointer",
+                          }}>Annuler</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{
+                          width: 36, height: 36, borderRadius: 8,
+                          background: C.bg, border: `1px solid ${C.border}`,
+                          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                        }}>
+                          <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1 }}>{formatDate(r.date).split(" ")[0]}</div>
+                          <div style={{ fontSize: 9, color: C.textLight, lineHeight: 1 }}>{formatDate(r.date).split(" ")[1]}</div>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div className="lora" style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>
+                            {r.quantite}{plant.unite === "kg" ? " kg" : plant.unite === "botte" ? " botte(s)" : " unité(s)"}
+                            <span style={{ color: C.green, marginLeft: 8, fontSize: 12, fontWeight: 400 }}>
+                              = {formatEur(r.quantite * plant.prixMarche)}
+                            </span>
+                          </div>
+                          {r.note && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{r.note}</div>}
+                        </div>
+                        <button onClick={() => setEditRecolte({ id: r.id, date: r.date, quantite: String(r.quantite), note: r.note || "" })}
+                          style={{ background: "none", border: "none", color: C.textMuted, cursor: "pointer", fontSize: 14, padding: 4 }}>✎</button>
+                        <button onClick={() => deleteRecolte(plant.id, r.id)}
+                          style={{ background: "none", border: "none", color: C.textLight, cursor: "pointer", fontSize: 16, padding: 4 }}>×</button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 4, borderTop: `1px solid ${C.border}` }}>
+                  <span style={{ fontSize: 11, color: C.textMuted }}>Total récolté</span>
+                  <span className="lora" style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>
+                    {plant.recoltes.reduce((s, r) => s + r.quantite, 0).toFixed(plant.unite === "kg" ? 1 : 0)}
+                    {plant.unite === "kg" ? " kg" : plant.unite === "botte" ? " botte(s)" : " unité(s)"}
+                    {" · "}{formatEur(plantValeur)}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div style={{ textAlign: "center", padding: "24px", color: C.textLight, fontSize: 13 }}>
+                Aucune récolte enregistrée encore.<br />
+                <span style={{ fontSize: 24 }}>🌱</span>
+              </div>
+            )}
+          </div>
+
+        ) : selectedPlanche ? (
+          /* ── VUE DÉTAIL PLANCHE ── */
+          <PlancheDetail
+            planche={selectedPlanche}
+            saisonActive={saisonActive}
+            C={C}
+            onBack={() => setSelectedPlancheId(null)}
+            onSelectPlant={plantId => setSelected(plantId)}
+            onDeletePlant={plantId => deletePlant(plantId, selectedPlancheId)}
+            onUpdatePlanche={handleUpdatePlanche}
+          />
+
+        ) : (
+          /* ── VUE LISTE PLANCHES ── */
+          <div>
             {/* Bannière de bienvenue */}
             {hasSamples && (
               <div style={{
@@ -449,8 +750,8 @@ export default function PotagerTracker() {
                   Bienvenue dans Récolta !
                 </div>
                 <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.7, marginBottom: 14 }}>
-                  Ces plants sont des <strong style={{ color: C.text }}>exemples</strong> pour te montrer comment fonctionne l&apos;app — récoltes, calcul d&apos;économies, graphique cumulatif.
-                  Quand tu es prêt·e, efface-les et saisis tes propres plants.
+                  Ces planches et plants sont des <strong style={{ color: C.text }}>exemples</strong> pour découvrir l&apos;app.
+                  Quand tu es prêt·e, efface-les et crée tes propres planches.
                 </div>
                 <button onClick={effacerExemples} style={{
                   width: "100%", background: C.redBg,
@@ -463,11 +764,9 @@ export default function PotagerTracker() {
               </div>
             )}
 
+            {/* Graphique cumulatif */}
             {chartData.length > 0 && (
-              <div style={{
-                background: C.paper, border: `1px solid ${C.border}`,
-                borderRadius: 14, padding: "16px", marginBottom: 14,
-              }}>
+              <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px", marginBottom: 14 }}>
                 <div className="lora" style={{ fontSize: 13, color: C.text, fontWeight: 600, marginBottom: 12 }}>
                   📈 Récoltes cumulées {saisonActive}
                 </div>
@@ -475,91 +774,70 @@ export default function PotagerTracker() {
               </div>
             )}
 
-            {plantsSaison.map((p, idx) => {
-              const valeur = p.recoltes.reduce((s, r) => s + r.quantite * p.prixMarche, 0);
-              const eco = valeur - p.coutTotal;
-              const totalQ = p.recoltes.reduce((s, r) => s + r.quantite, 0);
-              const swiped = swipeId === p.id;
-              return (
-                <div key={p.id} style={{ position: "relative", overflow: "hidden",
-                  borderBottom: idx < plantsSaison.length - 1 ? `1px dashed ${C.borderDash}` : "none",
-                }}>
-                  <div style={{
-                    position: "absolute", right: 0, top: 0, bottom: 0,
-                    width: 80, background: C.red,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    borderRadius: "0 8px 8px 0",
-                  }}>
-                    <button onClick={() => { deletePlant(p.id); setSwipeId(null); }} style={{
-                      background: "none", border: "none", color: "#fff",
-                      fontSize: 12, fontWeight: 700, cursor: "pointer",
-                      display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
-                    }}>
-                      <span style={{ fontSize: 18 }}>🗑</span>
-                      Supprimer
-                    </button>
-                  </div>
+            {/* Liste des planches */}
+            {planches.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "32px 16px", color: C.textLight }}>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>🪴</div>
+                <div className="lora" style={{ fontSize: 15, color: C.textMuted, marginBottom: 6 }}>Aucune planche</div>
+                <div style={{ fontSize: 12 }}>Crée ta première planche de culture</div>
+              </div>
+            ) : (
+              planches.map(planche => {
+                const plantsSaison = planche.plants.filter(p => getSaison(p) === saisonActive);
+                const investi = plantsSaison.reduce((s, p) => s + p.coutTotal, 0);
+                const valeur = plantsSaison.reduce((acc, p) => acc + p.recoltes.reduce((s, r) => s + r.quantite * p.prixMarche, 0), 0);
+                const eco = valeur - investi;
+                const dernier = planche.entretiens.length > 0
+                  ? [...planche.entretiens].sort((a, b) => b.date.localeCompare(a.date))[0]
+                  : null;
+                const statut = STATUTS[planche.statut] || STATUTS.active;
 
-                  <div
-                    onTouchStart={e => handleTouchStart(e, p.id)}
-                    onTouchEnd={e => handleTouchEnd(e, p.id)}
-                    onClick={() => { if (swiped) { setSwipeId(null); return; } setSelected(p.id); }}
+                return (
+                  <div key={planche.id}
+                    onClick={() => setSelectedPlancheId(planche.id)}
                     style={{
-                      display: "flex", alignItems: "center", gap: 14,
-                      padding: "13px 0", cursor: "pointer",
-                      transform: swiped ? "translateX(-80px)" : "translateX(0)",
-                      transition: "transform 0.25s ease",
-                      background: C.bg, position: "relative", zIndex: 1,
-                    }}
-                  >
-                    <div style={{ fontSize: 28, width: 36, textAlign: "center", flexShrink: 0 }}>{p.emoji}</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="lora" style={{ fontSize: 14, color: C.text, fontWeight: 600 }}>{p.nom}</div>
-                      <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
-                        {p.recoltes.length > 0
-                          ? `${p.recoltes.length} récolte${p.recoltes.length > 1 ? "s" : ""} · ${totalQ.toFixed(p.unite === "kg" ? 1 : 0)}${p.unite === "kg" ? " kg" : p.unite === "botte" ? " botte(s)" : " unité(s)"}`
-                          : "Pas encore récolté"}
+                      background: C.paper, border: `1px solid ${C.border}`,
+                      borderLeft: `4px solid ${planche.couleur}`,
+                      borderRadius: 12, padding: "14px 16px", marginBottom: 10,
+                      cursor: "pointer",
+                    }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                      <div>
+                        <div className="lora" style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{planche.nom}</div>
+                        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>
+                          {statut.icon} {statut.label}
+                          {planche.surface > 0 && ` · ${planche.surface} m²`}
+                          {` · ${plantsSaison.length} plant${plantsSaison.length !== 1 ? "s" : ""}`}
+                          {dernier && ` · 🧴 ${new Date(dernier.date + "T12:00:00").toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}`}
+                        </div>
                       </div>
-                      {valeur > 0 && (
-                        <div style={{ marginTop: 5, background: "#ede8d8", borderRadius: 3, height: 3, overflow: "hidden" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                        {(valeur > 0 || investi > 0) && (
                           <div style={{
-                            width: Math.min(100, (valeur / (p.coutTotal || 1)) * 100) + "%",
-                            height: "100%", background: eco >= 0 ? "#70a840" : p.couleur,
-                            borderRadius: 3, transition: "width 0.3s",
-                          }} />
-                        </div>
-                      )}
-                    </div>
-                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <div style={{
-                        display: "inline-block",
-                        background: eco >= 0 ? C.greenBg : eco < -0.01 ? C.redBg : "transparent",
-                        border: `1px solid ${eco >= 0 ? C.greenBorder : eco < -0.01 ? C.redBorder : C.border}`,
-                        borderRadius: 8, padding: "2px 8px",
-                      }}>
-                        <span className="lora" style={{ fontSize: 13, fontWeight: 600, color: eco >= 0 ? C.green : eco < -0.01 ? C.red : C.textMuted }}>
-                          {eco > 0 ? "+" : ""}{eco !== 0 ? formatEur(eco) : "—"}
-                        </span>
+                            background: eco >= 0 ? C.greenBg : C.redBg,
+                            border: `1px solid ${eco >= 0 ? C.greenBorder : C.redBorder}`,
+                            borderRadius: 8, padding: "3px 10px",
+                          }}>
+                            <span className="lora" style={{ fontSize: 13, fontWeight: 600, color: eco >= 0 ? C.green : C.red }}>
+                              {eco > 0 ? "+" : ""}{formatEur(eco)}
+                            </span>
+                          </div>
+                        )}
+                        <span style={{ color: C.textLight, fontSize: 16 }}>›</span>
                       </div>
-                      {totalQ > 0 && (
-                        <div style={{ fontSize: 11, color: C.amber, marginTop: 3, fontWeight: 600 }}>
-                          {totalQ.toFixed(p.unite === "kg" ? 1 : 0)}{p.unite === "kg" ? " kg" : p.unite === "botte" ? " botte(s)" : p.unite === "litre" ? " L" : " u."}
-                        </div>
-                      )}
                     </div>
-                    <div style={{ color: C.textLight, fontSize: 16, flexShrink: 0 }}>›</div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
 
-            <button onClick={() => setShowAddPlant(true)} style={{
+            <button onClick={() => setShowAddPlanche(true)} style={{
               width: "100%", background: "transparent",
               border: `1px dashed ${C.borderDash}`, borderRadius: 12,
               padding: "13px", cursor: "pointer",
-              color: C.textMuted, fontSize: 13, marginTop: 14,
+              color: C.textMuted, fontSize: 13, marginTop: 4,
             }}>
-              + Ajouter un légume / fruit
+              + Ajouter une planche
             </button>
 
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
@@ -574,6 +852,61 @@ export default function PotagerTracker() {
                 padding: "10px", cursor: "pointer", color: C.textMuted, fontSize: 12,
               }}>📥 Importer CSV</button>
             </div>
+
+            {/* Modal ajout planche */}
+            {showAddPlanche && (
+              <div style={{ position: "fixed", inset: 0, background: "#00000060", zIndex: 100, display: "flex", alignItems: "flex-end" }}>
+                <div style={{
+                  width: "100%", maxWidth: 640, margin: "0 auto",
+                  background: C.paper, borderRadius: "18px 18px 0 0",
+                  border: `1px solid ${C.border}`, padding: "20px 20px 36px",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+                    <div className="lora" style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Nouvelle planche</div>
+                    <button onClick={() => setShowAddPlanche(false)} style={{ background: "none", border: "none", color: C.textMuted, fontSize: 22, cursor: "pointer" }}>×</button>
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={labelStyle}>Nom *</div>
+                    <input autoFocus type="text" value={newPlanche.nom}
+                      onChange={e => setNewPlanche(n => ({ ...n, nom: e.target.value }))}
+                      placeholder="ex: Carré potager, Serre..." style={inputStyle} />
+                  </div>
+                  <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={labelStyle}>Surface (m²)</div>
+                      <input type="number" min="0" step="0.5" value={newPlanche.surface}
+                        onChange={e => setNewPlanche(n => ({ ...n, surface: e.target.value }))}
+                        placeholder="ex: 4" style={inputStyle} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={labelStyle}>Statut</div>
+                      <select value={newPlanche.statut}
+                        onChange={e => setNewPlanche(n => ({ ...n, statut: e.target.value }))} style={inputStyle}>
+                        <option value="active">🟢 Active</option>
+                        <option value="repos">😴 En repos</option>
+                        <option value="preparation">🌱 En préparation</option>
+                        <option value="hivernage">❄️ Hivernage</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={labelStyle}>Couleur</div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                      {COULEURS.map(c => (
+                        <div key={c} onClick={() => setNewPlanche(n => ({ ...n, couleur: c }))}
+                          style={{ width: 28, height: 28, borderRadius: 6, background: c, cursor: "pointer",
+                            border: newPlanche.couleur === c ? "2px solid #3a2e10" : "2px solid transparent" }} />
+                      ))}
+                    </div>
+                  </div>
+                  <button onClick={addPlanche} style={{
+                    width: "100%", background: C.greenBg, border: `1px solid ${C.greenBorder}`,
+                    color: C.green, borderRadius: 10, padding: "12px",
+                    fontSize: 14, fontWeight: 700, cursor: "pointer",
+                  }}>Créer la planche</button>
+                </div>
+              </div>
+            )}
 
             {/* Modal import CSV */}
             {showCsvImport && (
@@ -591,11 +924,14 @@ export default function PotagerTracker() {
                   </div>
 
                   <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: 12, marginBottom: 14 }}>
-                    <div style={{ fontSize: 10, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 6 }}>Format des colonnes (séparateur ;)</div>
+                    <div style={{ fontSize: 10, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 6 }}>Format (séparateur ;)</div>
                     <div style={{ fontSize: 11, color: C.text, lineHeight: 1.8, fontFamily: "monospace" }}>
                       date_achat · nom · emoji · quantite_plants<br/>
                       cout_pot · prix_marche · unite<br/>
                       recolte_date · recolte_quantite
+                    </div>
+                    <div style={{ fontSize: 10, color: C.textMuted, marginTop: 6 }}>
+                      Les plants importés sont ajoutés à la première planche.
                     </div>
                     <button onClick={telechargerModele} style={{
                       marginTop: 10, background: C.greenBg, border: `1px solid ${C.greenBorder}`,
@@ -632,7 +968,6 @@ export default function PotagerTracker() {
                             <div style={{ fontSize: 10, color: C.textMuted }}>
                               {new Date(p.dateAchat).getFullYear()} · {p.recoltes.length} récolte{p.recoltes.length > 1 ? "s" : ""}
                               {p.coutTotal > 0 ? ` · ${formatEur(p.coutTotal)} investi` : ""}
-                              {" · "}{formatEur(p.prixMarche)}/{p.unite === "kg" ? "kg" : "unité"}
                             </div>
                           </div>
                           <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>
@@ -652,341 +987,6 @@ export default function PotagerTracker() {
                   )}
                 </div>
               </div>
-            )}
-
-            {/* Modal ajout plant */}
-            {showAddPlant && (
-              <div style={{ position: "fixed", inset: 0, background: "#00000060", zIndex: 100, display: "flex", alignItems: "flex-end" }}>
-                <div style={{
-                  width: "100%", maxWidth: 640, margin: "0 auto",
-                  background: C.paper, borderRadius: "18px 18px 0 0",
-                  border: `1px solid ${C.border}`, padding: "20px 20px 36px",
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-                    <div className="lora" style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Nouveau plant</div>
-                    <button onClick={() => setShowAddPlant(false)} style={{ background: "none", border: "none", color: C.textMuted, fontSize: 22, cursor: "pointer" }}>×</button>
-                  </div>
-                  <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-                    <div style={{ width: 60 }}>
-                      <div style={labelStyle}>Emoji</div>
-                      <EmojiPicker value={newPlant.emoji} onChange={e => setNewPlant(n => ({ ...n, emoji: e }))} C={C} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={labelStyle}>Nom *</div>
-                      <input autoFocus type="text" value={newPlant.nom} onChange={e => setNewPlant(n => ({ ...n, nom: e.target.value }))}
-                        placeholder="ex: Framboisier, Basilic..." style={inputStyle} />
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={labelStyle}>Date d&apos;achat</div>
-                      <input type="date" value={newPlant.dateAchat}
-                        onChange={e => setNewPlant(n => ({ ...n, dateAchat: e.target.value }))} style={inputStyle} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={labelStyle}>Nb de plants</div>
-                      <input type="number" min="1" step="1" value={newPlant.quantite}
-                        onChange={e => setNewPlant(n => ({ ...n, quantite: e.target.value }))} style={inputStyle} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={labelStyle}>Coût d&apos;achat (€)</div>
-                      <input type="number" min="0" step="0.1" value={newPlant.prixPot}
-                        onChange={e => setNewPlant(n => ({ ...n, prixPot: e.target.value }))} placeholder="0,00" style={inputStyle} />
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={labelStyle}>Unité</div>
-                      <select value={newPlant.unite} onChange={e => setNewPlant(n => ({ ...n, unite: e.target.value }))} style={inputStyle}>
-                        <option value="kg">kg</option>
-                        <option value="unite">à l&apos;unité</option>
-                        <option value="botte">botte</option>
-                        <option value="litre">litre</option>
-                      </select>
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={labelStyle}>Prix marché bio (€) *</div>
-                      <input type="number" min="0" step="0.1" value={newPlant.prixMarche}
-                        onChange={e => setNewPlant(n => ({ ...n, prixMarche: e.target.value }))} placeholder="prix/unité" style={inputStyle} />
-                    </div>
-                  </div>
-                  <div style={{ marginBottom: 18 }}>
-                    <div style={labelStyle}>Couleur</div>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-                      {COULEURS.map(c => (
-                        <div key={c} onClick={() => setNewPlant(n => ({ ...n, couleur: c }))}
-                          style={{ width: 28, height: 28, borderRadius: 6, background: c, cursor: "pointer",
-                            border: newPlant.couleur === c ? "2px solid #3a2e10" : "2px solid transparent" }} />
-                      ))}
-                    </div>
-                  </div>
-                  <button onClick={addPlant} style={{
-                    width: "100%", background: C.greenBg, border: `1px solid ${C.greenBorder}`,
-                    color: C.green, borderRadius: 10, padding: "12px",
-                    fontSize: 14, fontWeight: 700, cursor: "pointer",
-                  }}>Ajouter au potager</button>
-                </div>
-              </div>
-            )}
-          </div>
-
-        ) : (
-          /* ── VUE DETAIL ── */
-          <div>
-            <button onClick={() => { setSelected(null); setEditPlant(null); }}
-              style={{ background: "none", border: "none", color: C.textMuted, cursor: "pointer", fontSize: 13, padding: "0 0 16px 0" }}>
-              ← Retour
-            </button>
-
-            {plant && (
-              <>
-                <div style={{
-                  background: C.paper, border: `1px solid ${C.border}`,
-                  borderRadius: 14, padding: "18px", marginBottom: 14,
-                }}>
-                  {editPlant ? (
-                    <div>
-                      <div className="lora" style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 14 }}>✎ Modifier le plant</div>
-                      <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-                        <div style={{ width: 60 }}>
-                          <div style={labelStyle}>Emoji</div>
-                          <EmojiPicker value={editPlant.emoji} onChange={e => setEditPlant(ep => ({ ...ep, emoji: e }))} C={C} />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={labelStyle}>Nom</div>
-                          <input autoFocus type="text" value={editPlant.nom} onChange={e => setEditPlant(ep => ({ ...ep, nom: e.target.value }))} style={inputStyle} />
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={labelStyle}>Date d&apos;achat</div>
-                          <input type="date" value={editPlant.dateAchat}
-                            onChange={e => setEditPlant(ep => ({ ...ep, dateAchat: e.target.value }))} style={inputStyle} />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={labelStyle}>Nb de plants</div>
-                          <input type="number" min="1" value={editPlant.quantite} onChange={e => setEditPlant(ep => ({ ...ep, quantite: e.target.value }))} style={inputStyle} />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={labelStyle}>Coût d&apos;achat (€)</div>
-                          <input type="number" min="0" step="0.1" value={editPlant.prixPot} onChange={e => setEditPlant(ep => ({ ...ep, prixPot: e.target.value }))} style={inputStyle} />
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={labelStyle}>Unité</div>
-                          <select value={editPlant.unite} onChange={e => setEditPlant(ep => ({ ...ep, unite: e.target.value }))} style={inputStyle}>
-                            <option value="kg">kg</option>
-                            <option value="unite">à l&apos;unité</option>
-                            <option value="botte">botte</option>
-                            <option value="litre">litre</option>
-                          </select>
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={labelStyle}>Prix marché bio (€)</div>
-                          <input type="number" min="0" step="0.1" value={editPlant.prixMarche} onChange={e => setEditPlant(ep => ({ ...ep, prixMarche: e.target.value }))} style={inputStyle} />
-                        </div>
-                      </div>
-                      <div style={{ marginBottom: 14 }}>
-                        <div style={labelStyle}>Couleur</div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-                          {COULEURS.map(c => (
-                            <div key={c} onClick={() => setEditPlant(ep => ({ ...ep, couleur: c }))}
-                              style={{ width: 28, height: 28, borderRadius: 6, background: c, cursor: "pointer",
-                                border: editPlant.couleur === c ? "2px solid #3a2e10" : "2px solid transparent" }} />
-                          ))}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button onClick={() => saveEditPlant(plant.id)} style={{
-                          flex: 2, background: C.greenBg, border: `1px solid ${C.greenBorder}`,
-                          color: C.green, borderRadius: 10, padding: "10px",
-                          fontSize: 13, fontWeight: 700, cursor: "pointer",
-                        }}>✓ Enregistrer</button>
-                        <button onClick={() => setEditPlant(null)} style={{
-                          flex: 1, background: C.redBg, border: `1px solid ${C.redBorder}`,
-                          color: C.red, borderRadius: 10, padding: "10px",
-                          fontSize: 13, cursor: "pointer",
-                        }}>Annuler</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 14 }}>
-                        <div style={{ fontSize: 38, lineHeight: 1 }}>{plant.emoji}</div>
-                        <div style={{ flex: 1 }}>
-                          <div className="lora" style={{ fontSize: 20, fontWeight: 700, color: C.text }}>{plant.nom}</div>
-                          <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
-                            {plant.quantite} plant{plant.quantite > 1 ? "s" : ""}
-                            {plant.dateAchat ? ` · Acheté le ${new Date(plant.dateAchat).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}` : ""}
-                            {plant.prixPot > 0 ? ` · ${formatEur(plant.prixPot)}/pot` : ""}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: "right" }}>
-                          <button onClick={() => setEditPlant({ nom: plant.nom, emoji: plant.emoji, quantite: String(plant.quantite), prixPot: String(plant.prixPot), prixMarche: String(plant.prixMarche), unite: plant.unite, couleur: plant.couleur, dateAchat: plant.dateAchat || new Date().toISOString().slice(0, 10) })}
-                            style={{ background: "none", border: "none", color: C.textMuted, fontSize: 12, cursor: "pointer", padding: 0 }}>
-                            ✎ Modifier
-                          </button>
-                          <div>
-                            <button onClick={() => reconduirePlant(plant)}
-                              style={{ background: "none", border: "none", color: C.green, fontSize: 12, cursor: "pointer", padding: 0, marginTop: 4 }}>
-                              🌱 Reconduire {getSaison(plant) + 1}
-                            </button>
-                          </div>
-                          {plant.custom && (
-                            <div>
-                              <button onClick={() => deletePlant(plant.id)}
-                                style={{ background: "none", border: "none", color: C.red, fontSize: 12, cursor: "pointer", padding: 0, marginTop: 4 }}>
-                                🗑 Supprimer
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-                        {[
-                          { l: "Investi", v: formatEur(plant.coutTotal), c: C.red },
-                          { l: "Valeur récoltée", v: formatEur(plantValeur), c: C.green },
-                          { l: "Économie", v: (plantEco >= 0 ? "+" : "") + formatEur(plantEco), c: plantEco >= 0 ? C.green : C.red },
-                          {
-                            l: plant.unite === "kg" ? "Kg récoltés" : plant.unite === "botte" ? "Bottes" : plant.unite === "litre" ? "Litres" : "Unités",
-                            v: plant.recoltes.reduce((s, r) => s + r.quantite, 0).toFixed(plant.unite === "kg" ? 1 : 0) + (plant.unite === "kg" ? " kg" : plant.unite === "botte" ? " bot." : plant.unite === "litre" ? " L" : " u."),
-                            c: C.amber,
-                          },
-                        ].map(s => (
-                          <div key={s.l} style={{ flex: 1, background: C.bg, borderRadius: 8, padding: "8px", border: `1px solid ${C.border}` }}>
-                            <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1.5 }}>{s.l}</div>
-                            <div className="lora" style={{ fontSize: 13, fontWeight: 600, color: s.c, marginTop: 2 }}>{s.v}</div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontSize: 11, color: C.textMuted }}>Prix marché bio :</span>
-                        {editPrix === plant.id ? (
-                          <input autoFocus type="number" step="0.1" defaultValue={plant.prixMarche}
-                            onBlur={e => updatePrix(plant.id, e.target.value)}
-                            onKeyDown={e => e.key === "Enter" && updatePrix(plant.id, e.target.value)}
-                            style={{ ...inputStyle, width: 80 }} />
-                        ) : (
-                          <button onClick={() => setEditPrix(plant.id)} style={{
-                            background: C.bg, border: `1px solid ${C.border}`,
-                            color: C.amber, borderRadius: 6, padding: "3px 10px",
-                            fontSize: 12, cursor: "pointer",
-                          }}>
-                            {formatEur(plant.prixMarche)}/{plant.unite === "kg" ? "kg" : plant.unite === "botte" ? "botte" : plant.unite === "litre" ? "litre" : "unité"} ✎
-                          </button>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                {/* Ajouter récolte */}
-                <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px", marginBottom: 14 }}>
-                  <div className="lora" style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 12 }}>+ Ajouter une récolte</div>
-                  <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={labelStyle}>Date</div>
-                      <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} style={inputStyle} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={labelStyle}>Quantité ({plant.unite === "kg" ? "kg" : plant.unite === "botte" ? "bottes" : "unités"})</div>
-                      <input type="number" step={plant.unite === "kg" ? "0.1" : "1"} min="0" value={form.quantite}
-                        onChange={e => setForm(f => ({ ...f, quantite: e.target.value }))}
-                        placeholder={plant.unite === "kg" ? "0.0" : "0"} style={inputStyle} />
-                    </div>
-                  </div>
-                  <div style={{ marginBottom: 10 }}>
-                    <div style={labelStyle}>Note (optionnel)</div>
-                    <input type="text" value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
-                      placeholder="ex: belle récolte, 1ère tomate..." style={inputStyle} />
-                  </div>
-                  <button onClick={() => addRecolte(plant.id)} style={{
-                    width: "100%", background: C.greenBg, border: `1px solid ${C.greenBorder}`,
-                    color: C.green, borderRadius: 8, padding: "10px",
-                    fontSize: 13, fontWeight: 700, cursor: "pointer",
-                  }}>Enregistrer la récolte</button>
-                </div>
-
-                {/* Historique */}
-                {plant.recoltes.length > 0 ? (
-                  <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 14, padding: "16px" }}>
-                    <div className="lora" style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 12 }}>Historique</div>
-                    {[...plant.recoltes].reverse().map(r => (
-                      <div key={r.id} style={{ borderBottom: `1px dashed ${C.borderDash}`, paddingBottom: 10, marginBottom: 10 }}>
-                        {editRecolte && editRecolte.id === r.id ? (
-                          <div>
-                            <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
-                              <div style={{ flex: 1 }}>
-                                <div style={labelStyle}>Date</div>
-                                <input type="date" value={editRecolte.date} onChange={e => setEditRecolte(er => ({ ...er, date: e.target.value }))} style={inputStyle} />
-                              </div>
-                              <div style={{ flex: 1 }}>
-                                <div style={labelStyle}>Quantité</div>
-                                <input autoFocus type="number" step={plant.unite === "kg" ? "0.1" : "1"} min="0"
-                                  value={editRecolte.quantite} onChange={e => setEditRecolte(er => ({ ...er, quantite: e.target.value }))} style={inputStyle} />
-                              </div>
-                            </div>
-                            <input type="text" value={editRecolte.note} onChange={e => setEditRecolte(er => ({ ...er, note: e.target.value }))}
-                              placeholder="Note..." style={{ ...inputStyle, marginBottom: 8 }} />
-                            <div style={{ display: "flex", gap: 8 }}>
-                              <button onClick={() => saveEditRecolte(plant.id)} style={{
-                                flex: 1, background: C.greenBg, border: `1px solid ${C.greenBorder}`,
-                                color: C.green, borderRadius: 8, padding: "7px",
-                                fontSize: 12, fontWeight: 700, cursor: "pointer",
-                              }}>✓ Enregistrer</button>
-                              <button onClick={() => setEditRecolte(null)} style={{
-                                flex: 1, background: C.redBg, border: `1px solid ${C.redBorder}`,
-                                color: C.red, borderRadius: 8, padding: "7px",
-                                fontSize: 12, cursor: "pointer",
-                              }}>Annuler</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                            <div style={{
-                              width: 36, height: 36, borderRadius: 8,
-                              background: C.bg, border: `1px solid ${C.border}`,
-                              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                            }}>
-                              <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1 }}>{formatDate(r.date).split(" ")[0]}</div>
-                              <div style={{ fontSize: 9, color: C.textLight, lineHeight: 1 }}>{formatDate(r.date).split(" ")[1]}</div>
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <div className="lora" style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>
-                                {r.quantite}{plant.unite === "kg" ? " kg" : plant.unite === "botte" ? " botte(s)" : " unité(s)"}
-                                <span style={{ color: C.green, marginLeft: 8, fontSize: 12, fontWeight: 400 }}>
-                                  = {formatEur(r.quantite * plant.prixMarche)}
-                                </span>
-                              </div>
-                              {r.note && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>{r.note}</div>}
-                            </div>
-                            <button onClick={() => setEditRecolte({ id: r.id, date: r.date, quantite: String(r.quantite), note: r.note || "" })}
-                              style={{ background: "none", border: "none", color: C.textMuted, cursor: "pointer", fontSize: 14, padding: 4 }}>✎</button>
-                            <button onClick={() => deleteRecolte(plant.id, r.id)}
-                              style={{ background: "none", border: "none", color: C.textLight, cursor: "pointer", fontSize: 16, padding: 4 }}>×</button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 4, borderTop: `1px solid ${C.border}` }}>
-                      <span style={{ fontSize: 11, color: C.textMuted }}>Total récolté</span>
-                      <span className="lora" style={{ fontSize: 13, color: C.green, fontWeight: 600 }}>
-                        {plant.recoltes.reduce((s, r) => s + r.quantite, 0).toFixed(plant.unite === "kg" ? 1 : 0)}
-                        {plant.unite === "kg" ? " kg" : plant.unite === "botte" ? " botte(s)" : " unité(s)"}
-                        {" · "}{formatEur(plantValeur)}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ textAlign: "center", padding: "24px", color: C.textLight, fontSize: 13 }}>
-                    Aucune récolte enregistrée encore.<br />
-                    <span style={{ fontSize: 24 }}>🌱</span>
-                  </div>
-                )}
-              </>
             )}
           </div>
         )}
