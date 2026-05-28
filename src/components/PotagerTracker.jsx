@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { INITIAL_PLANCHES, SAMPLE_PLANCHES } from "../constants/plants";
+import { INITIAL_PLANCHES, SAMPLE_PLANCHES, INITIAL_ACHATS, SAMPLE_ACHATS } from "../constants/plants";
 import { formatEur, formatDate } from "../utils/format";
 import { CALENDRIER_DEFAULT } from "../constants/calendrier";
 import { getFamille } from "../constants/families";
@@ -8,6 +8,7 @@ import EmojiPicker from "./EmojiPicker";
 import GlobalView from "./GlobalView";
 import ChartRecoltes from "./ChartRecoltes";
 import PlancheDetail from "./PlancheDetail";
+import AchatsView from "./AchatsView";
 
 const COULEURS = ["#e05c3a","#c03020","#e07a2a","#c8a020","#7ecb50","#4a8c3a","#2d6040","#3a7840","#4a2060","#7c4d8a","#a02828","#3a6080"];
 
@@ -85,6 +86,19 @@ export default function PotagerTracker() {
     } catch {}
   }, [hasSamples]);
 
+  const [achats, setAchats] = useState(() => {
+    try {
+      const saved = localStorage.getItem("potager_achats");
+      if (saved) return JSON.parse(saved);
+      return localStorage.getItem("recolta_has_samples") === "true" ? SAMPLE_ACHATS : INITIAL_ACHATS;
+    } catch { return INITIAL_ACHATS; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem("potager_achats", JSON.stringify(achats)); }
+    catch {}
+  }, [achats]);
+
   const [selected, setSelected] = useState(null);
   const [selectedPlancheId, setSelectedPlancheId] = useState(null);
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), quantite: "", note: "" });
@@ -108,7 +122,11 @@ export default function PotagerTracker() {
   const saisons = [...new Set(allPlants.map(getSaison))].sort((a, b) => b - a);
   const allPlantsSaison = allPlants.filter(p => getSaison(p) === saisonActive);
 
-  const totalInvesti = allPlantsSaison.reduce((s, p) => s + p.coutTotal, 0);
+  const coutPlantsSaison = allPlantsSaison.reduce((s, p) => s + p.coutTotal, 0);
+  const totalAchatsSaison = achats
+    .filter(a => new Date(a.date).getFullYear() === saisonActive)
+    .reduce((s, a) => s + a.montant, 0);
+  const totalInvesti = coutPlantsSaison + totalAchatsSaison;
   const totalValeur = allPlantsSaison.reduce((acc, p) =>
     acc + p.recoltes.reduce((s, r) => s + r.quantite * p.prixMarche, 0), 0);
   const economie = totalValeur - totalInvesti;
@@ -334,11 +352,15 @@ export default function PotagerTracker() {
 
   function effacerExemples() {
     setPlanches([]);
+    setAchats([]);
     setHasSamples(false);
     setSelected(null);
     setSelectedPlancheId(null);
     setSaisonActive(new Date().getFullYear());
   }
+
+  function addAchat(achat) { setAchats(prev => [...prev, achat]); }
+  function deleteAchat(id) { setAchats(prev => prev.filter(a => a.id !== id)); }
 
   // ── CSV ──────────────────────────────────────────────────────────
 
@@ -491,6 +513,16 @@ export default function PotagerTracker() {
               }}>
               📅 Calendrier
             </button>
+            <button onClick={() => { setView(view === "achats" ? "dashboard" : "achats"); setSelected(null); setSelectedPlancheId(null); }}
+              style={{
+                padding: "5px 14px", borderRadius: 20,
+                background: view === "achats" ? C.text : C.bg,
+                border: `1px solid ${C.border}`,
+                color: view === "achats" ? "#fff9ee" : C.textMuted,
+                fontSize: 12, fontWeight: 600, cursor: "pointer",
+              }}>
+              🛒 Achats
+            </button>
           </div>
 
           {/* Stats globales */}
@@ -519,6 +551,17 @@ export default function PotagerTracker() {
 
         ) : view === "calendrier" ? (
           <CalendrierView plants={allPlants} C={C} />
+
+        ) : view === "achats" ? (
+          <AchatsView
+            achats={achats}
+            saisonActive={saisonActive}
+            coutPlants={coutPlantsSaison}
+            totalValeur={totalValeur}
+            C={C}
+            onAddAchat={addAchat}
+            onDeleteAchat={deleteAchat}
+          />
 
         ) : selected && plant ? (
           /* ── VUE DÉTAIL PLANT ── */

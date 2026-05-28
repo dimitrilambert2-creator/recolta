@@ -1,4 +1,11 @@
 export const INITIAL_PLANCHES = [];
+export const INITIAL_ACHATS = [];
+
+export const SAMPLE_ACHATS = [
+  { id: 10001, date: "2026-04-28", categorie: "terreau",  description: "Terreau plantation 50L (exemple)", montant: 8.90 },
+  { id: 10002, date: "2026-05-01", categorie: "engrais",  description: "Engrais organique potager (exemple)", montant: 12.50 },
+  { id: 10003, date: "2026-05-10", categorie: "materiel", description: "Paillage fibres de coco (exemple)", montant: 6.90 },
+];
 
 export const SAMPLE_PLANCHES = [
   {
