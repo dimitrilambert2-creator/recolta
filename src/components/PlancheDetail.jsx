@@ -10,7 +10,7 @@ const STATUTS = {
   hivernage:   { label: "Hivernage",       icon: "❄️" },
 };
 
-export default function PlancheDetail({ planche, saisonActive, C, onBack, onSelectPlant, onDeletePlant, onUpdatePlanche }) {
+export default function PlancheDetail({ planche, saisonActive, C, onBack, onSelectPlant, onDeletePlant, onUpdatePlanche, allPlants = [] }) {
   const today = new Date().toISOString().slice(0, 10);
 
   const [showAddPlant, setShowAddPlant] = useState(false);
@@ -18,6 +18,36 @@ export default function PlancheDetail({ planche, saisonActive, C, onBack, onSele
     nom: "", emoji: "🌱", quantite: "1", prixPot: "", prixMarche: "",
     unite: "kg", couleur: "#4a8c3a", dateAchat: today,
   });
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Catalogue dédupliqué par nom pour l'autocomplétion
+  const catalog = (() => {
+    const seen = new Set();
+    const result = [];
+    for (const p of allPlants) {
+      const key = p.nom.toLowerCase().trim();
+      if (!seen.has(key)) { seen.add(key); result.push(p); }
+    }
+    return result;
+  })();
+  const suggestions = showSuggestions
+    ? (newPlant.nom.trim().length === 0
+        ? catalog.slice(0, 6)
+        : catalog.filter(p => p.nom.toLowerCase().includes(newPlant.nom.toLowerCase().trim())).slice(0, 6))
+    : [];
+
+  function applySuggestion(p) {
+    setNewPlant(n => ({
+      ...n,
+      nom: p.nom,
+      emoji: p.emoji,
+      prixPot: p.prixPot > 0 ? String(p.prixPot) : "",
+      prixMarche: p.prixMarche > 0 ? String(p.prixMarche) : "",
+      unite: p.unite,
+      couleur: p.couleur,
+    }));
+    setShowSuggestions(false);
+  }
 
   const [showEntretienForm, setShowEntretienForm] = useState(false);
   const [newEntretien, setNewEntretien] = useState({
@@ -79,6 +109,7 @@ export default function PlancheDetail({ planche, saisonActive, C, onBack, onSele
       }],
     });
     setNewPlant({ nom: "", emoji: "🌱", quantite: "1", prixPot: "", prixMarche: "", unite: "kg", couleur: "#4a8c3a", dateAchat: today });
+    setShowSuggestions(false);
     setShowAddPlant(false);
   }
 
@@ -410,18 +441,51 @@ export default function PlancheDetail({ planche, saisonActive, C, onBack, onSele
           }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
               <div className="lora" style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Nouveau plant</div>
-              <button onClick={() => setShowAddPlant(false)} style={{ background: "none", border: "none", color: C.textMuted, fontSize: 22, cursor: "pointer" }}>×</button>
+              <button onClick={() => { setShowAddPlant(false); setShowSuggestions(false); }} style={{ background: "none", border: "none", color: C.textMuted, fontSize: 22, cursor: "pointer" }}>×</button>
             </div>
             <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
               <div style={{ width: 60 }}>
                 <div style={labelStyle}>Emoji</div>
                 <EmojiPicker value={newPlant.emoji} onChange={e => setNewPlant(n => ({ ...n, emoji: e }))} C={C} />
               </div>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, position: "relative" }}>
                 <div style={labelStyle}>Nom *</div>
                 <input autoFocus type="text" value={newPlant.nom}
-                  onChange={e => setNewPlant(n => ({ ...n, nom: e.target.value }))}
+                  onChange={e => { setNewPlant(n => ({ ...n, nom: e.target.value })); setShowSuggestions(true); }}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                   placeholder="ex: Tomate, Basilic..." style={inputStyle} />
+                {suggestions.length > 0 && (
+                  <div style={{
+                    position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50,
+                    background: C.paper, border: `1px solid ${C.border}`,
+                    borderRadius: 10, marginTop: 4,
+                    boxShadow: "0 4px 20px #00000020", overflow: "hidden",
+                  }}>
+                    {suggestions.map((p, i) => (
+                      <div key={i}
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => applySuggestion(p)}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 10,
+                          padding: "9px 12px", cursor: "pointer",
+                          borderBottom: i < suggestions.length - 1 ? `1px solid ${C.borderDash}` : "none",
+                          background: "transparent",
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = C.bg}
+                        onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                      >
+                        <span style={{ fontSize: 20 }}>{p.emoji}</span>
+                        <span style={{ flex: 1, fontSize: 13, color: C.text, fontWeight: 600 }}>{p.nom}</span>
+                        {p.prixMarche > 0 && (
+                          <span style={{ fontSize: 11, color: C.textMuted }}>
+                            {p.prixMarche.toFixed(2)} €/{p.unite === "kg" ? "kg" : p.unite === "unite" ? "unité" : p.unite === "botte" ? "botte" : "L"}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>

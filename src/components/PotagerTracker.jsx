@@ -963,6 +963,7 @@ export default function PotagerTracker() {
             onSelectPlant={plantId => setSelected(plantId)}
             onDeletePlant={plantId => deletePlant(plantId, selectedPlancheId)}
             onUpdatePlanche={handleUpdatePlanche}
+            allPlants={allPlants}
           />
 
         ) : (
