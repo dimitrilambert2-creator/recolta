@@ -624,7 +624,7 @@ export default function PotagerTracker() {
         <div style={{ maxWidth: 640, margin: "0 auto" }}>
           <div>
             <div className="lora" style={{ fontSize: 24, color: C.text, fontWeight: 700, textAlign: "center" }}>
-              Recolt'app
+              🌿 Recolt'app 🌿
             </div>
           </div>
 
