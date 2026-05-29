@@ -623,10 +623,7 @@ export default function PotagerTracker() {
       }}>
         <div style={{ maxWidth: 640, margin: "0 auto" }}>
           <div>
-            <div style={{ fontSize: 10, color: C.textMuted, letterSpacing: 3, textTransform: "uppercase" }}>
-              Journal · Saison {saisonActive}
-            </div>
-            <div className="lora" style={{ fontSize: 24, color: C.text, fontWeight: 700, marginTop: 2 }}>
+            <div className="lora" style={{ fontSize: 24, color: C.text, fontWeight: 700 }}>
               🌿 Mon Potager
             </div>
           </div>
