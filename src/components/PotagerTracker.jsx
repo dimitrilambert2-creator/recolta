@@ -137,6 +137,7 @@ export default function PotagerTracker() {
   const [view, setView] = useState("dashboard");
   const [saisonActive, setSaisonActive] = useState(new Date().getFullYear());
   const [showCsvImport, setShowCsvImport] = useState(false);
+  const [alertesOpen, setAlertesOpen] = useState(false);
   const [csvError, setCsvError] = useState("");
   const [csvPreview, setCsvPreview] = useState([]);
   const [deleted, setDeleted] = useState(null);
@@ -1017,10 +1018,15 @@ export default function PotagerTracker() {
             {/* Alertes & rappels */}
             {hasAlertes && (
               <div style={{ background: C.paper, border: `1px solid ${C.border}`, borderRadius: 14, padding: "14px 16px", marginBottom: 14 }}>
-                <div className="lora" style={{ fontSize: 13, fontWeight: 600, color: C.text, marginBottom: 12 }}>
-                  🔔 Alertes &amp; rappels
+                <div onClick={() => setAlertesOpen(o => !o)}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", marginBottom: alertesOpen ? 12 : 0 }}>
+                  <div className="lora" style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+                    🔔 Alertes &amp; rappels
+                  </div>
+                  <span style={{ fontSize: 12, color: C.textMuted, transition: "transform 0.2s", display: "inline-block", transform: alertesOpen ? "rotate(180deg)" : "rotate(0deg)" }}>▼</span>
                 </div>
 
+                {alertesOpen && <>
                 {/* Calendrier */}
                 {rappelsCalendrier.length > 0 && (
                   <div style={{ marginBottom: alertesRotation.length > 0 || alertesEntretienDetaille.length > 0 ? 12 : 0 }}>
@@ -1142,6 +1148,7 @@ export default function PotagerTracker() {
                     </div>
                   </div>
                 )}
+                </>}
               </div>
             )}
 
