@@ -625,37 +625,17 @@ export default function PotagerTracker() {
           </div>
 
           {/* Sélecteur de saison */}
-          <div style={{ display: "flex", gap: 6, marginTop: 12, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 6, marginTop: 10, alignItems: "center" }}>
             {saisons.map(s => (
               <button key={s} onClick={() => { setSaisonActive(s); setSelected(null); setSelectedPlancheId(null); setView("dashboard"); }}
                 style={{
-                  padding: "5px 14px", borderRadius: 20,
+                  padding: "4px 14px", borderRadius: 20,
                   background: saisonActive === s && view === "dashboard" ? C.text : C.bg,
                   border: `1px solid ${C.border}`,
                   color: saisonActive === s && view === "dashboard" ? "#fff9ee" : C.textMuted,
                   fontSize: 12, fontWeight: 600, cursor: "pointer",
                 }}>
                 {s}
-              </button>
-            ))}
-            {[
-              { key: "global",     emoji: "📊", title: "Vue globale" },
-              { key: "calendrier", emoji: "📅", title: "Calendrier" },
-              { key: "achats",     emoji: "🛒", title: "Achats" },
-              { key: "carnet",     emoji: "📓", title: "Carnet" },
-            ].map(({ key, emoji, title }, i) => (
-              <button key={key}
-                title={title}
-                onClick={() => { setView(view === key ? "dashboard" : key); setSelected(null); setSelectedPlancheId(null); }}
-                style={{
-                  marginLeft: i === 0 ? "auto" : 0,
-                  padding: "5px 10px", borderRadius: 20,
-                  background: view === key ? C.text : C.bg,
-                  border: `1px solid ${C.border}`,
-                  color: view === key ? "#fff9ee" : C.textMuted,
-                  fontSize: 16, cursor: "pointer", lineHeight: 1,
-                }}>
-                {emoji}
               </button>
             ))}
           </div>
@@ -679,7 +659,7 @@ export default function PotagerTracker() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "16px" }}>
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "16px", paddingBottom: "calc(72px + env(safe-area-inset-bottom, 0px))" }}>
 
         {view === "global" ? (
           <GlobalView plants={allPlants} saisons={saisons} C={C} />
@@ -1367,10 +1347,47 @@ export default function PotagerTracker() {
         )}
       </div>
 
+      {/* ── Bottom navigation ── */}
+      <div style={{
+        position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 20,
+        background: C.paper, borderTop: `1px solid ${C.border}`,
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        boxShadow: "0 -2px 12px #0000000d",
+      }}>
+        <div style={{ maxWidth: 640, margin: "0 auto", display: "flex" }}>
+          {[
+            { key: "potager",    emoji: "🌿", label: "Potager" },
+            { key: "global",     emoji: "📊", label: "Global" },
+            { key: "calendrier", emoji: "📅", label: "Calendrier" },
+            { key: "achats",     emoji: "🛒", label: "Achats" },
+            { key: "carnet",     emoji: "📓", label: "Carnet" },
+          ].map(({ key, emoji, label }) => {
+            const activeTab = ["global", "calendrier", "achats", "carnet"].includes(view) ? view : "potager";
+            const isActive = activeTab === key;
+            return (
+              <button key={key}
+                onClick={() => {
+                  if (key === "potager") { setView("dashboard"); setSelected(null); setSelectedPlancheId(null); }
+                  else { setView(key); setSelected(null); setSelectedPlancheId(null); }
+                }}
+                style={{
+                  flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
+                  justifyContent: "center", gap: 2, padding: "8px 0",
+                  background: "none", border: "none", cursor: "pointer",
+                  color: isActive ? C.green : C.textLight,
+                }}>
+                <span style={{ fontSize: 20, lineHeight: 1 }}>{emoji}</span>
+                <span style={{ fontSize: 9, fontWeight: isActive ? 700 : 400, letterSpacing: 0.5 }}>{label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Toast annulation suppression */}
       {deleted && (
         <div style={{
-          position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+          position: "fixed", bottom: "calc(56px + env(safe-area-inset-bottom, 0px) + 12px)", left: "50%", transform: "translateX(-50%)",
           background: C.text, borderRadius: 14, padding: "12px 18px",
           display: "flex", alignItems: "center", gap: 14,
           boxShadow: "0 4px 20px #00000030", zIndex: 200,
