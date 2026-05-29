@@ -167,7 +167,8 @@ export default function PotagerTracker() {
   // Planche add/edit/delete
   const [showAddPlanche, setShowAddPlanche] = useState(false);
   const [newPlanche, setNewPlanche] = useState({ nom: "", surface: "", statut: "active", couleur: "#4a8c3a" });
-  const [confirmDeletePlanche, setConfirmDeletePlanche] = useState(null); // planche id
+  const [swipedPlancheId, setSwipedPlancheId] = useState(null);
+  const plancheSwipeStartX = useRef(null);
 
   // ── Données dérivées ─────────────────────────────────────────────
   const allPlants = planches.flatMap(pl => pl.plants);
@@ -447,7 +448,18 @@ export default function PotagerTracker() {
   function deletePlanche(plancheId) {
     setPlanches(prev => prev.filter(pl => pl.id !== plancheId));
     if (selectedPlancheId === plancheId) setSelectedPlancheId(null);
-    setConfirmDeletePlanche(null);
+    setSwipedPlancheId(null);
+  }
+
+  function handlePlancheTouchStart(e) {
+    plancheSwipeStartX.current = e.touches[0].clientX;
+  }
+  function handlePlancheTouchEnd(e, id) {
+    if (plancheSwipeStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - plancheSwipeStartX.current;
+    if (dx < -60) setSwipedPlancheId(id);
+    else if (dx > 20) setSwipedPlancheId(null);
+    plancheSwipeStartX.current = null;
   }
 
   function effacerExemples() {
@@ -1151,43 +1163,60 @@ export default function PotagerTracker() {
                   : null;
                 const statut = STATUTS[planche.statut] || STATUTS.active;
 
+                const swiped = swipedPlancheId === planche.id;
                 return (
-                  <div key={planche.id}
-                    onClick={() => setSelectedPlancheId(planche.id)}
-                    style={{
-                      background: C.paper, border: `1px solid ${C.border}`,
-                      borderLeft: `4px solid ${planche.couleur}`,
-                      borderRadius: 12, padding: "14px 16px", marginBottom: 10,
-                      cursor: "pointer",
+                  <div key={planche.id} style={{ position: "relative", overflow: "hidden", borderRadius: 12, marginBottom: 10 }}>
+                    {/* Bouton supprimer derrière */}
+                    <div style={{
+                      position: "absolute", right: 0, top: 0, bottom: 0, width: 90,
+                      background: C.red, borderRadius: "0 12px 12px 0",
+                      display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-                      <div>
-                        <div className="lora" style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{planche.nom}</div>
-                        <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>
-                          {statut.icon} {statut.label}
-                          {planche.surface > 0 && ` · ${planche.surface} m²`}
-                          {` · ${plantsSaison.length} plant${plantsSaison.length !== 1 ? "s" : ""}`}
-                          {dernier && ` · 🧴 ${new Date(dernier.date + "T12:00:00").toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}`}
-                        </div>
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                        {(valeur > 0 || investi > 0) && (
-                          <div style={{
-                            background: eco >= 0 ? C.greenBg : C.redBg,
-                            border: `1px solid ${eco >= 0 ? C.greenBorder : C.redBorder}`,
-                            borderRadius: 8, padding: "3px 10px",
-                          }}>
-                            <span className="lora" style={{ fontSize: 13, fontWeight: 600, color: eco >= 0 ? C.green : C.red }}>
-                              {eco > 0 ? "+" : ""}{formatEur(eco)}
-                            </span>
+                      <button onClick={() => deletePlanche(planche.id)} style={{
+                        background: "none", border: "none", color: "#fff",
+                        fontSize: 12, fontWeight: 700, cursor: "pointer",
+                        display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+                      }}>
+                        <span style={{ fontSize: 20 }}>🗑</span>Supprimer
+                      </button>
+                    </div>
+                    {/* Carte */}
+                    <div
+                      onTouchStart={handlePlancheTouchStart}
+                      onTouchEnd={e => handlePlancheTouchEnd(e, planche.id)}
+                      onClick={() => { if (swiped) { setSwipedPlancheId(null); return; } setSelectedPlancheId(planche.id); }}
+                      style={{
+                        background: C.paper, border: `1px solid ${C.border}`,
+                        borderLeft: `4px solid ${planche.couleur}`,
+                        borderRadius: 12, padding: "14px 16px",
+                        cursor: "pointer", position: "relative", zIndex: 1,
+                        transform: swiped ? "translateX(-90px)" : "translateX(0)",
+                        transition: "transform 0.25s ease",
+                      }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                        <div>
+                          <div className="lora" style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{planche.nom}</div>
+                          <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}>
+                            {statut.icon} {statut.label}
+                            {planche.surface > 0 && ` · ${planche.surface} m²`}
+                            {` · ${plantsSaison.length} plant${plantsSaison.length !== 1 ? "s" : ""}`}
+                            {dernier && ` · 🧴 ${new Date(dernier.date + "T12:00:00").toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}`}
                           </div>
-                        )}
-                        <button
-                          onClick={e => { e.stopPropagation(); setConfirmDeletePlanche(planche.id); }}
-                          style={{ background: "none", border: "none", color: C.textLight, fontSize: 15, cursor: "pointer", padding: "2px 4px", flexShrink: 0 }}
-                          title="Supprimer cette planche"
-                        >🗑</button>
-                        <span style={{ color: C.textLight, fontSize: 16 }}>›</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                          {(valeur > 0 || investi > 0) && (
+                            <div style={{
+                              background: eco >= 0 ? C.greenBg : C.redBg,
+                              border: `1px solid ${eco >= 0 ? C.greenBorder : C.redBorder}`,
+                              borderRadius: 8, padding: "3px 10px",
+                            }}>
+                              <span className="lora" style={{ fontSize: 13, fontWeight: 600, color: eco >= 0 ? C.green : C.red }}>
+                                {eco > 0 ? "+" : ""}{formatEur(eco)}
+                              </span>
+                            </div>
+                          )}
+                          <span style={{ color: C.textLight, fontSize: 16 }}>›</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1393,40 +1422,6 @@ export default function PotagerTracker() {
           })}
         </div>
       </div>
-
-      {/* Confirmation suppression planche */}
-      {confirmDeletePlanche && (() => {
-        const planche = planches.find(pl => pl.id === confirmDeletePlanche);
-        if (!planche) return null;
-        const nbPlants = planche.plants.length;
-        return (
-          <div style={{ position: "fixed", inset: 0, background: "#00000060", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 20px" }}>
-            <div style={{ background: C.paper, borderRadius: 18, padding: "28px 24px", maxWidth: 360, width: "100%", boxShadow: "0 8px 40px #00000040" }}>
-              <div style={{ fontSize: 36, textAlign: "center", marginBottom: 12 }}>🗑</div>
-              <div className="lora" style={{ fontSize: 17, fontWeight: 700, color: C.text, textAlign: "center", marginBottom: 8 }}>
-                Supprimer « {planche.nom} » ?
-              </div>
-              <div style={{ fontSize: 13, color: C.textMuted, textAlign: "center", marginBottom: 24, lineHeight: 1.6 }}>
-                {nbPlants > 0
-                  ? `Cette planche contient ${nbPlants} plante${nbPlants > 1 ? "s" : ""}. Toutes les données seront définitivement supprimées.`
-                  : "Cette action est irréversible."}
-              </div>
-              <div style={{ display: "flex", gap: 10 }}>
-                <button onClick={() => setConfirmDeletePlanche(null)} style={{
-                  flex: 1, background: C.bg, border: `1px solid ${C.border}`,
-                  color: C.text, borderRadius: 10, padding: "11px",
-                  fontSize: 14, fontWeight: 600, cursor: "pointer",
-                }}>Annuler</button>
-                <button onClick={() => deletePlanche(confirmDeletePlanche)} style={{
-                  flex: 1, background: C.redBg, border: `1px solid ${C.redBorder}`,
-                  color: C.red, borderRadius: 10, padding: "11px",
-                  fontSize: 14, fontWeight: 700, cursor: "pointer",
-                }}>Supprimer</button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
 
       {/* Toast annulation suppression */}
       {deleted && (
