@@ -107,27 +107,27 @@ export default function AchatsView({ achats, saisonActive, coutPlants, totalVale
         {/* Formulaire */}
         {showForm && (
           <div style={{ background: C.bg, borderRadius: 10, padding: "12px", marginBottom: 14, border: `1px solid ${C.border}` }}>
-            <div style={{ marginBottom: 10 }}>
-              <div style={labelStyle}>Date</div>
-              <input type="date" value={newAchat.date}
-                onChange={e => setNewAchat(n => ({ ...n, date: e.target.value }))} style={inputStyle} />
-            </div>
             <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-              <div style={{ flex: 2 }}>
-                <div style={labelStyle}>Catégorie</div>
-                <select value={newAchat.categorie}
-                  onChange={e => setNewAchat(n => ({ ...n, categorie: e.target.value }))} style={inputStyle}>
-                  {Object.entries(CATEGORIES_ACHATS).map(([k, v]) => (
-                    <option key={k} value={k}>{v.emoji} {v.label}</option>
-                  ))}
-                </select>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={labelStyle}>Date</div>
+                <input type="date" value={newAchat.date}
+                  onChange={e => setNewAchat(n => ({ ...n, date: e.target.value }))} style={inputStyle} />
               </div>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={labelStyle}>Montant (€) *</div>
                 <input type="number" min="0" step="0.1" value={newAchat.montant}
                   onChange={e => setNewAchat(n => ({ ...n, montant: e.target.value }))}
                   placeholder="0,00" style={inputStyle} />
               </div>
+            </div>
+            <div style={{ marginBottom: 10 }}>
+              <div style={labelStyle}>Catégorie</div>
+              <select value={newAchat.categorie}
+                onChange={e => setNewAchat(n => ({ ...n, categorie: e.target.value }))} style={inputStyle}>
+                {Object.entries(CATEGORIES_ACHATS).map(([k, v]) => (
+                  <option key={k} value={k}>{v.emoji} {v.label}</option>
+                ))}
+              </select>
             </div>
             <div style={{ marginBottom: 10 }}>
               <div style={labelStyle}>Description *</div>
