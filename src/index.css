@@ -14,3 +14,8 @@ textarea {
   max-width: 100%;
   box-sizing: border-box;
 }
+
+input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
