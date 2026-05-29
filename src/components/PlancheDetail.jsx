@@ -488,12 +488,12 @@ export default function PlancheDetail({ planche, saisonActive, C, onBack, onSele
                 )}
               </div>
             </div>
+            <div style={{ marginBottom: 12 }}>
+              <div style={labelStyle}>Date d'achat</div>
+              <input type="date" value={newPlant.dateAchat}
+                onChange={e => setNewPlant(n => ({ ...n, dateAchat: e.target.value }))} style={inputStyle} />
+            </div>
             <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-              <div style={{ flex: 1 }}>
-                <div style={labelStyle}>Date d'achat</div>
-                <input type="date" value={newPlant.dateAchat}
-                  onChange={e => setNewPlant(n => ({ ...n, dateAchat: e.target.value }))} style={inputStyle} />
-              </div>
               <div style={{ flex: 1 }}>
                 <div style={labelStyle}>Nb de plants</div>
                 <input type="number" min="1" step="1" value={newPlant.quantite}
