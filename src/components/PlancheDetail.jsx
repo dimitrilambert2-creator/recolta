@@ -72,9 +72,10 @@ export default function PlancheDetail({ planche, saisonActive, C, onBack, onSele
   const inputStyle = {
     width: "100%", background: "#fff9ee",
     border: `1px solid ${C.border}`, color: C.text,
-    borderRadius: 8, padding: "8px 10px",
-    fontSize: 13, boxSizing: "border-box",
+    borderRadius: 8, padding: "0 10px",
+    height: "46px", boxSizing: "border-box",
     fontFamily: "'Nunito', sans-serif", outline: "none",
+    display: "block",
   };
   const labelStyle = {
     fontSize: 10, color: C.textMuted, marginBottom: 4,
