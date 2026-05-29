@@ -114,8 +114,8 @@ export default function AchatsView({ achats, saisonActive, coutPlants, totalVale
                 <input type="date" value={newAchat.date}
                   onChange={e => setNewAchat(n => ({ ...n, date: e.target.value }))} style={inputStyle} />
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={labelStyle}>Montant (€) *</div>
+              <div style={{ width: 90, flexShrink: 0 }}>
+                <div style={labelStyle}>Montant (€)</div>
                 <input type="number" min="0" step="0.1" value={newAchat.montant}
                   onChange={e => setNewAchat(n => ({ ...n, montant: e.target.value }))}
                   placeholder="0,00" style={inputStyle} />
