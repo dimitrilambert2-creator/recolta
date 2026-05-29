@@ -152,6 +152,18 @@ export default function PotagerTracker() {
     catch {}
   }, [rappelsDone]);
 
+  const [rotationsDismissed, setRotationsDismissed] = useState(() => {
+    try {
+      const saved = localStorage.getItem("potager_rotations_dismissed");
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch { return new Set(); }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem("potager_rotations_dismissed", JSON.stringify([...rotationsDismissed])); }
+    catch {}
+  }, [rotationsDismissed]);
+
   // Planche add/edit
   const [showAddPlanche, setShowAddPlanche] = useState(false);
   const [newPlanche, setNewPlanche] = useState({ nom: "", surface: "", statut: "active", couleur: "#4a8c3a" });
@@ -212,7 +224,10 @@ export default function PotagerTracker() {
         const famille = getFamille(plant.nom);
         if (!famille) return;
         const conflit = precedents.find(p => getFamille(p.nom) === famille);
-        if (conflit) alerts.push({ plancheNom: planche.nom, plancheId: planche.id, plant: plant.nom, famille, plantPrecedent: conflit.nom });
+        if (!conflit) return;
+        const key = `${saisonActive}__${planche.id}__${plant.nom}`;
+        if (rotationsDismissed.has(key)) return;
+        alerts.push({ plancheNom: planche.nom, plancheId: planche.id, plant: plant.nom, famille, plantPrecedent: conflit.nom, key });
       });
     });
     return alerts;
@@ -443,6 +458,10 @@ export default function PotagerTracker() {
 
   function dismissRappel(action, espece) {
     setRappelsDone(prev => new Set([...prev, `${saisonActive}__${action}__${espece}`]));
+  }
+
+  function dismissRotation(key) {
+    setRotationsDismissed(prev => new Set([...prev, key]));
   }
 
   function marquerEntretienFait(plancheId, type) {
@@ -1052,12 +1071,19 @@ export default function PotagerTracker() {
                           Rotation à surveiller
                         </div>
                         {alertesRotation.map((a, i) => (
-                          <div key={i} style={{ fontSize: 11, color: C.textMuted, marginBottom: 2 }}>
-                            <span style={{ fontWeight: 600, color: C.text, cursor: "pointer", textDecoration: "underline dotted" }}
-                              onClick={() => setSelectedPlancheId(a.plancheId)}>
-                              {a.plancheNom}
-                            </span>
-                            {" — "}{a.plant} ({a.famille}) · même famille que {a.plantPrecedent} l&apos;an dernier
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: C.textMuted, marginBottom: 4 }}>
+                            <div style={{ flex: 1 }}>
+                              <span style={{ fontWeight: 600, color: C.text, cursor: "pointer", textDecoration: "underline dotted" }}
+                                onClick={() => setSelectedPlancheId(a.plancheId)}>
+                                {a.plancheNom}
+                              </span>
+                              {" — "}{a.plant} ({a.famille}) · même famille que {a.plantPrecedent} l&apos;an dernier
+                            </div>
+                            <button onClick={() => dismissRotation(a.key)} style={{
+                              background: "none", border: "none", color: C.textLight,
+                              cursor: "pointer", fontSize: 14, padding: "0 2px",
+                              lineHeight: 1, flexShrink: 0,
+                            }} title="Masquer cette alerte">✕</button>
                           </div>
                         ))}
                       </div>
