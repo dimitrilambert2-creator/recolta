@@ -1,0 +1,14 @@
+/* ─────────────────────────────────────────────
+   Empêche l'auto-zoom iOS Safari sur les inputs
+   (iOS zoome quand font-size < 16px au focus)
+   ───────────────────────────────────────────── */
+input,
+input[type="text"],
+input[type="number"],
+input[type="date"],
+input[type="email"],
+input[type="search"],
+select,
+textarea {
+  font-size: 16px !important;
+}
