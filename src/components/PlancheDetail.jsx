@@ -59,8 +59,8 @@ export default function PlancheDetail({ planche, saisonActive, C, onBack, onSele
   function addPlant() {
     const qte = parseInt(newPlant.quantite) || 1;
     const prixPot = parseFloat(newPlant.prixPot) || 0;
-    const prixMarche = parseFloat(newPlant.prixMarche);
-    if (!newPlant.nom.trim() || !prixMarche) return;
+    const prixMarche = parseFloat(newPlant.prixMarche) || 0;
+    if (!newPlant.nom.trim()) return;
     onUpdatePlanche({
       ...planche,
       plants: [...planche.plants, {
@@ -454,7 +454,7 @@ export default function PlancheDetail({ planche, saisonActive, C, onBack, onSele
                 </select>
               </div>
               <div style={{ flex: 1 }}>
-                <div style={labelStyle}>Prix marché bio (€) *</div>
+                <div style={labelStyle}>Prix marché bio (€)</div>
                 <input type="number" min="0" step="0.1" value={newPlant.prixMarche}
                   onChange={e => setNewPlant(n => ({ ...n, prixMarche: e.target.value }))}
                   placeholder="prix/unité" style={inputStyle} />

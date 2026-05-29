@@ -365,8 +365,8 @@ export default function PotagerTracker() {
   function saveEditPlant(plantId) {
     const qte = parseInt(editPlant.quantite) || 1;
     const prixPot = parseFloat(editPlant.prixPot) || 0;
-    const prixMarche = parseFloat(editPlant.prixMarche);
-    if (!editPlant.nom.trim() || !prixMarche || !plantPlanche) return;
+    const prixMarche = parseFloat(editPlant.prixMarche) || 0;
+    if (!editPlant.nom.trim() || !plantPlanche) return;
     updatePlantInPlanche(plantPlanche.id, plantId, p => ({
       ...p,
       nom: editPlant.nom.trim(),
