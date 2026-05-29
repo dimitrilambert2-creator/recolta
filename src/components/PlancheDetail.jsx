@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import EmojiPicker from "./EmojiPicker";
 
 const COULEURS = ["#e05c3a","#c03020","#e07a2a","#c8a020","#7ecb50","#4a8c3a","#2d6040","#3a7840","#4a2060","#7c4d8a","#a02828","#3a6080"];
-const ENTRETIEN_TYPES = ["Compost","Fumure","Paillage","Désherbage","Arrosage","Traitement","Taille","Chaulage","Autre"];
+const ENTRETIEN_TYPES = ["Compost","Fumure","Paillage","Engrais vert","Désherbage","Binage","Arrosage","Traitement","Taille","Chaulage","Autre"];
 const STATUTS = {
   active:      { label: "Active",          icon: "🟢" },
   repos:       { label: "En repos",        icon: "😴" },

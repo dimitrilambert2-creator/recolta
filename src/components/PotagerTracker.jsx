@@ -13,6 +13,21 @@ import CarnetView from "./CarnetView";
 
 const COULEURS = ["#e05c3a","#c03020","#e07a2a","#c8a020","#7ecb50","#4a8c3a","#2d6040","#3a7840","#4a2060","#7c4d8a","#a02828","#3a6080"];
 
+const enPeriodeMois = (m, debut, fin) => debut <= fin ? (m >= debut && m <= fin) : (m >= debut || m <= fin);
+
+const REGLES_ALERTE = [
+  { type: "Compost",      emoji: "♻️", label: "Compost",             mode: "saison",    cible: 1,             debut: 10, fin: 3  },
+  { type: "Fumure",       emoji: "🌿", label: "Fumure organique",     mode: "periode",   periodes: [{debut:3,fin:4},{debut:10,fin:11}] },
+  { type: "Paillage",     emoji: "🌾", label: "Paillage",             mode: "saison",    cible: 1,             debut: 5,  fin: 9  },
+  { type: "Engrais vert", emoji: "🫘", label: "Engrais vert",         mode: "saison",    cible: 1,             debut: 8,  fin: 10 },
+  { type: "Chaulage",     emoji: "🪨", label: "Chaulage",             mode: "saison",    cible: 1,             debut: 10, fin: 11 },
+  { type: "Désherbage",   emoji: "🌱", label: "Désherbage",           mode: "intervalle",intervalJours: 7,     debut: 5,  fin: 9  },
+  { type: "Binage",       emoji: "⛏️", label: "Binage",               mode: "saison",    cible: 1,             debut: 4,  fin: 8  },
+  { type: "Taille",       emoji: "✂️", label: "Taille",               mode: "saison",    cible: 1,             debut: 6,  fin: 9  },
+  { type: "Traitement",   emoji: "🧪", label: "Traitement préventif", mode: "intervalle",intervalJours: 60,    debut: 5,  fin: 10 },
+  { type: "Arrosage",     emoji: "💧", label: "Arrosage",             mode: "intervalle",intervalJours: 2,     debut: 6,  fin: 8  },
+];
+
 const C = {
   bg: "#fdf6e8",
   paper: "#fff9ee",
@@ -37,10 +52,10 @@ const STATUTS = {
   hivernage:   { label: "Hivernage",      icon: "❄️" },
 };
 
-const CSV_MODELE = `date_achat;nom;emoji;quantite_plants;cout_pot;prix_marche;unite;recolte_date;recolte_quantite
-2026-05-01;Tomate cerise;🍒;3;2.45;6.50;kg;2026-09-01;6.0
-2026-05-01;Courgette;🥒;4;1.50;3.50;kg;;
-2026-05-01;Haricot vert;🫘;1;0;9.00;kg;2026-08-01;1.2`;
+const CSV_MODELE = `date_achat;nom;emoji;quantite_plants;cout_pot;prix_marche;unite;planche;recolte_date;recolte_quantite
+2026-05-01;Tomate cerise;🍒;3;2.45;6.50;kg;Carré potager;2026-09-01;6.0
+2026-05-01;Courgette;🥒;4;1.50;3.50;kg;Carré potager;;
+2026-05-01;Haricot vert;🫘;1;0;9.00;kg;Planche nord;2026-08-01;1.2`;
 
 export default function PotagerTracker() {
   const [planches, setPlanches] = useState(() => {
@@ -125,6 +140,17 @@ export default function PotagerTracker() {
   const [csvError, setCsvError] = useState("");
   const [csvPreview, setCsvPreview] = useState([]);
   const [deleted, setDeleted] = useState(null);
+  const [rappelsDone, setRappelsDone] = useState(() => {
+    try {
+      const saved = localStorage.getItem("potager_rappels_done");
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch { return new Set(); }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem("potager_rappels_done", JSON.stringify([...rappelsDone])); }
+    catch {}
+  }, [rappelsDone]);
 
   // Planche add/edit
   const [showAddPlanche, setShowAddPlanche] = useState(false);
@@ -192,41 +218,79 @@ export default function PotagerTracker() {
     return alerts;
   })();
 
-  const alertesEntretien = (() => {
+  const alertesEntretienDetaille = (() => {
+    if (saisonActive !== new Date().getFullYear()) return [];
+    const mois = new Date().getMonth() + 1;
     const now = new Date();
-    return planches
+    const result = [];
+
+    planches
       .filter(pl => pl.statut === "active" || pl.statut === "preparation")
-      .map(planche => {
-        const passeEs = planche.entretiens.filter(e => e.date <= today).sort((a, b) => b.date.localeCompare(a.date));
-        if (passeEs.length === 0) return { plancheNom: planche.nom, plancheId: planche.id, jours: null };
-        const jours = Math.floor((now - new Date(passeEs[0].date + "T12:00:00")) / 86400000);
-        return jours > 30 ? { plancheNom: planche.nom, plancheId: planche.id, jours } : null;
-      })
-      .filter(Boolean);
+      .forEach(planche => {
+        const items = [];
+        REGLES_ALERTE.forEach(regle => {
+          const actif = regle.periodes
+            ? regle.periodes.some(p => enPeriodeMois(mois, p.debut, p.fin))
+            : enPeriodeMois(mois, regle.debut, regle.fin);
+          if (!actif) return;
+
+          const entretiensType = planche.entretiens
+            .filter(e => e.type === regle.type && new Date(e.date).getFullYear() === saisonActive && e.date <= today)
+            .sort((a, b) => b.date.localeCompare(a.date));
+
+          if (regle.mode === "saison") {
+            if (entretiensType.length < regle.cible) {
+              items.push({ ...regle, joursDepuis: null, fait: entretiensType.length });
+            }
+          } else if (regle.mode === "periode") {
+            const periodeCourante = regle.periodes.find(p => enPeriodeMois(mois, p.debut, p.fin));
+            if (!periodeCourante) return;
+            const faitDansPeriode = entretiensType.some(e => {
+              const me = new Date(e.date).getMonth() + 1;
+              return enPeriodeMois(me, periodeCourante.debut, periodeCourante.fin);
+            });
+            if (!faitDansPeriode) {
+              items.push({ ...regle, joursDepuis: null, fait: 0 });
+            }
+          } else if (regle.mode === "intervalle") {
+            const dernierDate = entretiensType.length > 0 ? new Date(entretiensType[0].date + "T12:00:00") : null;
+            const joursDepuis = dernierDate ? Math.floor((now - dernierDate) / 86400000) : null;
+            if (joursDepuis === null || joursDepuis >= regle.intervalJours) {
+              items.push({ ...regle, joursDepuis, fait: entretiensType.length });
+            }
+          }
+        });
+
+        if (items.length > 0) {
+          result.push({ plancheNom: planche.nom, plancheId: planche.id, items });
+        }
+      });
+
+    return result;
   })();
 
   const moisActuel = new Date().getMonth() + 1;
   const rappelsCalendrier = (() => {
     const parAction = { "À semer (intérieur)": [], "À repiquer": [], "À planter": [] };
+    const actionMap = { semis_int: "À semer (intérieur)", repiquage: "À repiquer", pleine_terre: "À planter" };
     CALENDRIER_DEFAULT.forEach(esp => {
       esp.periodes.forEach(p => {
         if (p.type === "recolte") return;
+        const actionLabel = actionMap[p.type];
+        if (!actionLabel) return;
         const actif = p.debut <= p.fin
           ? moisActuel >= p.debut && moisActuel <= p.fin
           : moisActuel >= p.debut || moisActuel <= p.fin;
         if (!actif) return;
-        if (p.type === "semis_int" && !parAction["À semer (intérieur)"].includes(esp.espece))
-          parAction["À semer (intérieur)"].push(esp.espece);
-        if (p.type === "repiquage" && !parAction["À repiquer"].includes(esp.espece))
-          parAction["À repiquer"].push(esp.espece);
-        if (p.type === "pleine_terre" && !parAction["À planter"].includes(esp.espece))
-          parAction["À planter"].push(esp.espece);
+        if (rappelsDone.has(`${saisonActive}__${actionLabel}__${esp.espece}`)) return;
+        if (!parAction[actionLabel].includes(esp.espece))
+          parAction[actionLabel].push(esp.espece);
       });
     });
     return Object.entries(parAction).filter(([, v]) => v.length > 0);
   })();
 
-  const hasAlertes = alertesRotation.length > 0 || alertesEntretien.length > 0 || rappelsCalendrier.length > 0;
+  const hasAlertes = alertesRotation.length > 0 || alertesEntretienDetaille.length > 0 || rappelsCalendrier.length > 0;
 
   const inputStyle = {
     width: "100%", background: "#fff9ee",
@@ -377,6 +441,27 @@ export default function PotagerTracker() {
   function addAchat(achat) { setAchats(prev => [...prev, achat]); }
   function deleteAchat(id) { setAchats(prev => prev.filter(a => a.id !== id)); }
 
+  function dismissRappel(action, espece) {
+    setRappelsDone(prev => new Set([...prev, `${saisonActive}__${action}__${espece}`]));
+  }
+
+  function marquerEntretienFait(plancheId, type) {
+    setPlanches(prev => prev.map(pl => {
+      if (pl.id !== plancheId) return pl;
+      return {
+        ...pl,
+        entretiens: [...pl.entretiens, {
+          id: Date.now(),
+          date: new Date().toISOString().slice(0, 10),
+          type,
+          quantite: "",
+          unite: "",
+          note: "",
+        }],
+      };
+    }));
+  }
+
   // ── CSV ──────────────────────────────────────────────────────────
 
   function telechargerModele() {
@@ -408,6 +493,7 @@ export default function PotagerTracker() {
       const coutPot = parseFloat(get(row, "cout_pot")) || 0;
       const prixMarche = parseFloat(get(row, "prix_marche").replace(",", "."));
       const unite = get(row, "unite") || "kg";
+      const planche = get(row, "planche");
       const recolteDate = get(row, "recolte_date");
       const recolteQte = parseFloat(get(row, "recolte_quantite").replace(",", "."));
 
@@ -422,6 +508,7 @@ export default function PotagerTracker() {
           prixPot: coutPot, coutTotal: coutPot * quantite,
           prixMarche, unite, couleur: "#4a8c3a",
           recoltes: [], custom: true,
+          _planche: planche,
         };
       }
       if (recolteDate && !isNaN(recolteQte) && recolteQte > 0) {
@@ -449,10 +536,34 @@ export default function PotagerTracker() {
     const aAjouter = csvPreview.filter(p => !existants.has(p.nom + "__" + p.dateAchat));
     if (aAjouter.length > 0) {
       setPlanches(prev => {
-        if (prev.length === 0) {
-          return [{ id: Date.now(), nom: "Mon potager", surface: 0, statut: "active", couleur: "#4a8c3a", plants: aAjouter, entretiens: [] }];
-        }
-        return prev.map((pl, idx) => idx === 0 ? { ...pl, plants: [...pl.plants, ...aAjouter] } : pl);
+        const result = [...prev];
+        const byPlanche = {};
+        aAjouter.forEach(p => {
+          const key = (p._planche || "").trim();
+          if (!byPlanche[key]) byPlanche[key] = [];
+          byPlanche[key].push(p);
+        });
+
+        Object.entries(byPlanche).forEach(([plancheName, plants]) => {
+          const cleanPlants = plants.map(({ _planche: _, ...rest }) => rest);
+          if (!plancheName) {
+            if (result.length === 0) {
+              result.push({ id: Date.now(), nom: "Mon potager", surface: 0, statut: "active", couleur: "#4a8c3a", plants: cleanPlants, entretiens: [] });
+            } else {
+              const idx = 0;
+              result[idx] = { ...result[idx], plants: [...result[idx].plants, ...cleanPlants] };
+            }
+          } else {
+            const idx = result.findIndex(pl => pl.nom.toLowerCase() === plancheName.toLowerCase());
+            if (idx >= 0) {
+              result[idx] = { ...result[idx], plants: [...result[idx].plants, ...cleanPlants] };
+            } else {
+              result.push({ id: Date.now() + Math.random(), nom: plancheName, surface: 0, statut: "active", couleur: "#4a8c3a", plants: cleanPlants, entretiens: [] });
+            }
+          }
+        });
+
+        return result;
       });
       setSaisonActive(new Date(aAjouter[0].dateAchat).getFullYear());
     }
@@ -508,46 +619,26 @@ export default function PotagerTracker() {
                 {s}
               </button>
             ))}
-            <button onClick={() => { setView(view === "global" ? "dashboard" : "global"); setSelected(null); setSelectedPlancheId(null); }}
-              style={{
-                marginLeft: "auto", padding: "5px 14px", borderRadius: 20,
-                background: view === "global" ? C.text : C.bg,
-                border: `1px solid ${C.border}`,
-                color: view === "global" ? "#fff9ee" : C.textMuted,
-                fontSize: 12, fontWeight: 600, cursor: "pointer",
-              }}>
-              📊 Global
-            </button>
-            <button onClick={() => { setView(view === "calendrier" ? "dashboard" : "calendrier"); setSelected(null); setSelectedPlancheId(null); }}
-              style={{
-                padding: "5px 14px", borderRadius: 20,
-                background: view === "calendrier" ? C.text : C.bg,
-                border: `1px solid ${C.border}`,
-                color: view === "calendrier" ? "#fff9ee" : C.textMuted,
-                fontSize: 12, fontWeight: 600, cursor: "pointer",
-              }}>
-              📅 Calendrier
-            </button>
-            <button onClick={() => { setView(view === "achats" ? "dashboard" : "achats"); setSelected(null); setSelectedPlancheId(null); }}
-              style={{
-                padding: "5px 14px", borderRadius: 20,
-                background: view === "achats" ? C.text : C.bg,
-                border: `1px solid ${C.border}`,
-                color: view === "achats" ? "#fff9ee" : C.textMuted,
-                fontSize: 12, fontWeight: 600, cursor: "pointer",
-              }}>
-              🛒 Achats
-            </button>
-            <button onClick={() => { setView(view === "carnet" ? "dashboard" : "carnet"); setSelected(null); setSelectedPlancheId(null); }}
-              style={{
-                padding: "5px 14px", borderRadius: 20,
-                background: view === "carnet" ? C.text : C.bg,
-                border: `1px solid ${C.border}`,
-                color: view === "carnet" ? "#fff9ee" : C.textMuted,
-                fontSize: 12, fontWeight: 600, cursor: "pointer",
-              }}>
-              📓 Carnet
-            </button>
+            {[
+              { key: "global",     emoji: "📊", title: "Vue globale" },
+              { key: "calendrier", emoji: "📅", title: "Calendrier" },
+              { key: "achats",     emoji: "🛒", title: "Achats" },
+              { key: "carnet",     emoji: "📓", title: "Carnet" },
+            ].map(({ key, emoji, title }, i) => (
+              <button key={key}
+                title={title}
+                onClick={() => { setView(view === key ? "dashboard" : key); setSelected(null); setSelectedPlancheId(null); }}
+                style={{
+                  marginLeft: i === 0 ? "auto" : 0,
+                  padding: "5px 10px", borderRadius: 20,
+                  background: view === key ? C.text : C.bg,
+                  border: `1px solid ${C.border}`,
+                  color: view === key ? "#fff9ee" : C.textMuted,
+                  fontSize: 16, cursor: "pointer", lineHeight: 1,
+                }}>
+                {emoji}
+              </button>
+            ))}
           </div>
 
           {/* Stats globales */}
@@ -916,7 +1007,7 @@ export default function PotagerTracker() {
 
                 {/* Calendrier */}
                 {rappelsCalendrier.length > 0 && (
-                  <div style={{ marginBottom: alertesRotation.length > 0 || alertesEntretien.length > 0 ? 12 : 0 }}>
+                  <div style={{ marginBottom: alertesRotation.length > 0 || alertesEntretienDetaille.length > 0 ? 12 : 0 }}>
                     <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                       <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>🌱</span>
                       <div style={{ flex: 1 }}>
@@ -924,9 +1015,25 @@ export default function PotagerTracker() {
                           En ce moment dans le jardin
                         </div>
                         {rappelsCalendrier.map(([action, especes]) => (
-                          <div key={action} style={{ fontSize: 11, color: C.textMuted, marginBottom: 2 }}>
-                            <span style={{ fontWeight: 600, color: C.text }}>{action} :</span>{" "}
-                            {especes.join(", ")}
+                          <div key={action} style={{ marginBottom: 6 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: C.text, marginBottom: 4 }}>{action}</div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                              {especes.map(espece => (
+                                <div key={espece} style={{
+                                  display: "flex", alignItems: "center", gap: 3,
+                                  background: C.bg, border: `1px solid ${C.border}`,
+                                  borderRadius: 6, padding: "2px 4px 2px 8px",
+                                  fontSize: 11, color: C.textMuted,
+                                }}>
+                                  <span>{espece}</span>
+                                  <button onClick={() => dismissRappel(action, espece)} style={{
+                                    background: "none", border: "none", color: C.green,
+                                    cursor: "pointer", fontSize: 13, padding: "0 2px",
+                                    lineHeight: 1, fontWeight: 700,
+                                  }} title="Marquer comme fait">✓</button>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -936,7 +1043,7 @@ export default function PotagerTracker() {
 
                 {/* Rotation */}
                 {alertesRotation.length > 0 && (
-                  <div style={{ marginBottom: alertesEntretien.length > 0 ? 12 : 0 }}>
+                  <div style={{ marginBottom: alertesEntretienDetaille.length > 0 ? 12 : 0 }}>
                     {rappelsCalendrier.length > 0 && <div style={{ borderTop: `1px dashed ${C.borderDash}`, margin: "10px 0" }} />}
                     <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                       <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⚠️</span>
@@ -959,22 +1066,53 @@ export default function PotagerTracker() {
                 )}
 
                 {/* Entretien */}
-                {alertesEntretien.length > 0 && (
+                {alertesEntretienDetaille.length > 0 && (
                   <div>
                     {(rappelsCalendrier.length > 0 || alertesRotation.length > 0) && <div style={{ borderTop: `1px dashed ${C.borderDash}`, margin: "10px 0" }} />}
                     <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                       <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>🧴</span>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, marginBottom: 4 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, marginBottom: 8 }}>
                           Entretien recommandé
                         </div>
-                        {alertesEntretien.map((a, i) => (
-                          <div key={i} style={{ fontSize: 11, color: C.textMuted, marginBottom: 2 }}>
-                            <span style={{ fontWeight: 600, color: C.text, cursor: "pointer", textDecoration: "underline dotted" }}
-                              onClick={() => setSelectedPlancheId(a.plancheId)}>
-                              {a.plancheNom}
-                            </span>
-                            {" — "}{a.jours === null ? "aucun entretien enregistré" : `dernier entretien il y a ${a.jours} jours`}
+                        {alertesEntretienDetaille.map((plancheAlerte, pi) => (
+                          <div key={plancheAlerte.plancheId} style={{ marginBottom: pi < alertesEntretienDetaille.length - 1 ? 10 : 0 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: C.text, marginBottom: 5 }}>
+                              <span style={{ cursor: "pointer", textDecoration: "underline dotted" }}
+                                onClick={() => setSelectedPlancheId(plancheAlerte.plancheId)}>
+                                {plancheAlerte.plancheNom}
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                              {plancheAlerte.items.map(item => {
+                                const msgIntervalle = item.joursDepuis === null
+                                  ? "jamais fait"
+                                  : `il y a ${item.joursDepuis}j · /${item.intervalJours}j`;
+                                const msgSaison = item.mode === "periode" ? "pas fait cette période" : "pas fait cette saison";
+                                const msg = item.mode === "intervalle" ? msgIntervalle : msgSaison;
+                                const urgent = item.mode === "intervalle" && item.joursDepuis !== null && item.joursDepuis > item.intervalJours * 2;
+                                return (
+                                  <div key={item.type} style={{
+                                    display: "flex", alignItems: "center", gap: 4,
+                                    background: urgent ? C.redBg : C.bg,
+                                    border: `1px solid ${urgent ? C.redBorder : C.border}`,
+                                    borderRadius: 6, padding: "3px 4px 3px 7px",
+                                    fontSize: 11,
+                                  }}>
+                                    <span style={{ fontSize: 13 }}>{item.emoji}</span>
+                                    <div style={{ lineHeight: 1.3 }}>
+                                      <div style={{ fontWeight: 600, color: urgent ? C.red : C.text, fontSize: 10 }}>{item.label}</div>
+                                      <div style={{ color: C.textMuted, fontSize: 9 }}>{msg}</div>
+                                    </div>
+                                    <button onClick={() => marquerEntretienFait(plancheAlerte.plancheId, item.type)} style={{
+                                      background: "none", border: "none", color: C.green,
+                                      cursor: "pointer", fontSize: 14, padding: "0 2px",
+                                      lineHeight: 1, fontWeight: 700, marginLeft: 2,
+                                    }} title="Marquer comme fait">✓</button>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1137,11 +1275,11 @@ export default function PotagerTracker() {
                     <div style={{ fontSize: 10, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 6 }}>Format (séparateur ;)</div>
                     <div style={{ fontSize: 11, color: C.text, lineHeight: 1.8, fontFamily: "monospace" }}>
                       date_achat · nom · emoji · quantite_plants<br/>
-                      cout_pot · prix_marche · unite<br/>
+                      cout_pot · prix_marche · unite · <strong>planche</strong><br/>
                       recolte_date · recolte_quantite
                     </div>
                     <div style={{ fontSize: 10, color: C.textMuted, marginTop: 6 }}>
-                      Les plants importés sont ajoutés à la première planche.
+                      La colonne <strong>planche</strong> est optionnelle. Si renseignée, les plants sont acheminés vers la planche correspondante (créée si nécessaire).
                     </div>
                     <button onClick={telechargerModele} style={{
                       marginTop: 10, background: C.greenBg, border: `1px solid ${C.greenBorder}`,
@@ -1178,6 +1316,7 @@ export default function PotagerTracker() {
                             <div style={{ fontSize: 10, color: C.textMuted }}>
                               {new Date(p.dateAchat).getFullYear()} · {p.recoltes.length} récolte{p.recoltes.length > 1 ? "s" : ""}
                               {p.coutTotal > 0 ? ` · ${formatEur(p.coutTotal)} investi` : ""}
+                              {p._planche ? <span style={{ color: C.green }}> · {p._planche}</span> : ""}
                             </div>
                           </div>
                           <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>
